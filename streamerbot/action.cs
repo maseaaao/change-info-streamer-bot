@@ -11,9 +11,15 @@ using Newtonsoft.Json.Linq;
 public class CPHInline
 {
     private const int ApiVersion = 3;
+    private static readonly ShortLivedCache<JObject> StateCache =
+        new ShortLivedCache<JObject>(TimeSpan.FromSeconds(5));
+    private static readonly HttpClient TwitchHttpClient = new HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(10)
+    };
     private const string ReplyEvent = "stream_info_api_response";
-    private const string DefaultTwitchTemplate = "🔴 %subtitle%| !tg !yt !tw !donate";
-    private const string DefaultYouTubeTemplate = "🔴 [PUBG] %subtitle%| !tg !yt !tw !donate";
+    private const string DefaultTwitchTemplate = "🔴 %subtitle%| !tg !yt";
+    private const string DefaultYouTubeTemplate = "🔴 [PUBG] %subtitle%| !tg !tw";
     private const string TwitchTemplateKey = "stream_info.template.twitch";
     private const string YouTubeTemplateKey = "stream_info.template.youtube";
     private const string SubtitleKey = "stream_info.template.subtitle";
@@ -99,6 +105,11 @@ public class CPHInline
 
     private JObject GetState()
     {
+        return StateCache.GetOrCreate(BuildState, state => (JObject)state.DeepClone());
+    }
+
+    private JObject BuildState()
+    {
         return new JObject
         {
             ["apiVersion"] = ApiVersion,
@@ -134,6 +145,7 @@ public class CPHInline
         CPH.SetGlobalVar(TwitchTemplateKey, twitchTemplate, true);
         CPH.SetGlobalVar(YouTubeTemplateKey, youtubeTemplate, true);
         CPH.SetGlobalVar(SubtitleKey, subtitle, true);
+        StateCache.Invalidate();
 
         return new JObject { ["ok"] = true, ["templates"] = GetTemplates() };
     }
@@ -423,6 +435,7 @@ public class CPHInline
         }
 
         Ensure(fields.HasValues, "Нет изменений Twitch для сохранения.");
+        StateCache.Invalidate();
         return new JObject { ["ok"] = allOk, ["fields"] = fields };
     }
 
@@ -465,6 +478,7 @@ public class CPHInline
         }
 
         Ensure(fields.HasValues, "Нет изменений YouTube для сохранения.");
+        StateCache.Invalidate();
         return new JObject { ["ok"] = allOk, ["fields"] = fields };
     }
 
@@ -475,15 +489,17 @@ public class CPHInline
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(clientId))
             throw new InvalidOperationException("Twitch OAuth не подключён в Streamer.bot.");
 
-        using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
+        using (var request = new HttpRequestMessage(HttpMethod.Get, "https://api.twitch.tv/helix/" + path))
         {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            client.DefaultRequestHeaders.Add("Client-Id", clientId);
-            HttpResponseMessage response = client.GetAsync("https://api.twitch.tv/helix/" + path).GetAwaiter().GetResult();
-            string content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException("Twitch Helix: " + (int)response.StatusCode + " " + content);
-            return JObject.Parse(content);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.TryAddWithoutValidation("Client-Id", clientId);
+            using (HttpResponseMessage response = TwitchHttpClient.SendAsync(request).GetAwaiter().GetResult())
+            {
+                string content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode)
+                    throw new InvalidOperationException("Twitch Helix: " + (int)response.StatusCode + " " + content);
+                return JObject.Parse(content);
+            }
         }
     }
 

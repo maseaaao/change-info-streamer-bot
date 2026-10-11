@@ -4,9 +4,11 @@ import { resolve } from "node:path";
 
 const project = resolve(import.meta.dirname, "..");
 const packageMetadata = JSON.parse(readFileSync(resolve(project, "package.json"), "utf8"));
+const cacheSource = readFileSync(resolve(project, "streamerbot/state-cache-policy.cs"), "utf8");
+const cacheBody = cacheSource.replace(/^using System;\r?\n\r?\n/, "");
 const policySource = readFileSync(resolve(project, "streamerbot/automatic-youtube-policy.cs"), "utf8");
 const policyBody = policySource.replace(/^using System;\r?\n\r?\n/, "");
-const actionSource = `${readFileSync(resolve(project, "streamerbot/action.cs"), "utf8")}\n${policyBody}`;
+const actionSource = `${readFileSync(resolve(project, "streamerbot/action.cs"), "utf8")}\n${cacheBody}\n${policyBody}`;
 const EXPORTED_FROM = "1.0.7";
 // Streamer.bot 1.0.7 rejects an import when minimumVersion equals its own
 // version, so the compatibility floor must stay below the exporter version.

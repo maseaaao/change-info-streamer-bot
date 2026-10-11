@@ -11,7 +11,11 @@ public static class Program
             NeverAppliesWhenBroadcastStaysUnavailable();
             DoesNotRetryACompletedUpdate();
             DoesNotRetryAThrowingUpdate();
-            Console.WriteLine("Automatic YouTube policy tests passed (5 scenarios).");
+            ReusesStateWithinFiveSeconds();
+            RefreshesStateAtFiveSeconds();
+            InvalidatesStateImmediately();
+            ReturnsIndependentCopies();
+            Console.WriteLine("Streamer.bot policy tests passed (9 scenarios).");
             return 0;
         }
         catch (Exception ex)
@@ -97,6 +101,71 @@ public static class Program
 
         Assert(threw, "A platform update error must propagate unchanged.");
         Assert(updates == 1, "A throwing metadata update must not be retried.");
+    }
+
+    private static void ReusesStateWithinFiveSeconds()
+    {
+        DateTime now = new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc);
+        int reads = 0;
+        var cache = new ShortLivedCache<CacheValue>(TimeSpan.FromSeconds(5), () => now);
+        Func<CacheValue> factory = () => new CacheValue { Number = ++reads };
+        Func<CacheValue, CacheValue> clone = value => new CacheValue { Number = value.Number };
+
+        CacheValue first = cache.GetOrCreate(factory, clone);
+        now = now.AddSeconds(4.999);
+        CacheValue second = cache.GetOrCreate(factory, clone);
+
+        Assert(first.Number == 1 && second.Number == 1, "State must be reused for less than five seconds.");
+        Assert(reads == 1, "Concurrent or near-simultaneous reads must share one refresh.");
+    }
+
+    private static void RefreshesStateAtFiveSeconds()
+    {
+        DateTime now = new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc);
+        int reads = 0;
+        var cache = new ShortLivedCache<CacheValue>(TimeSpan.FromSeconds(5), () => now);
+        Func<CacheValue> factory = () => new CacheValue { Number = ++reads };
+        Func<CacheValue, CacheValue> clone = value => new CacheValue { Number = value.Number };
+
+        cache.GetOrCreate(factory, clone);
+        now = now.AddSeconds(5);
+        CacheValue refreshed = cache.GetOrCreate(factory, clone);
+
+        Assert(refreshed.Number == 2 && reads == 2, "State must be refreshed at the five-second boundary.");
+    }
+
+    private static void InvalidatesStateImmediately()
+    {
+        DateTime now = new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc);
+        int reads = 0;
+        var cache = new ShortLivedCache<CacheValue>(TimeSpan.FromSeconds(5), () => now);
+        Func<CacheValue> factory = () => new CacheValue { Number = ++reads };
+        Func<CacheValue, CacheValue> clone = value => new CacheValue { Number = value.Number };
+
+        cache.GetOrCreate(factory, clone);
+        cache.Invalidate();
+        CacheValue refreshed = cache.GetOrCreate(factory, clone);
+
+        Assert(refreshed.Number == 2 && reads == 2, "A successful write must invalidate cached state immediately.");
+    }
+
+    private static void ReturnsIndependentCopies()
+    {
+        DateTime now = new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc);
+        var cache = new ShortLivedCache<CacheValue>(TimeSpan.FromSeconds(5), () => now);
+        Func<CacheValue> factory = () => new CacheValue { Number = 1 };
+        Func<CacheValue, CacheValue> clone = value => new CacheValue { Number = value.Number };
+
+        CacheValue first = cache.GetOrCreate(factory, clone);
+        first.Number = 999;
+        CacheValue second = cache.GetOrCreate(factory, clone);
+
+        Assert(second.Number == 1, "Callers must not mutate the cached state shared with another request.");
+    }
+
+    private sealed class CacheValue
+    {
+        public int Number;
     }
 
     private static void Assert(bool condition, string message)

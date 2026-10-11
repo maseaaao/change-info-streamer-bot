@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="../../streamerbot/state-cache-policy.cs" Link="StateCachePolicy.cs" />
     <Compile Include="../../streamerbot/automatic-youtube-policy.cs" Link="AutomaticYouTubePolicy.cs" />
   </ItemGroup>
 </Project>

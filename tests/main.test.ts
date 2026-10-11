@@ -155,6 +155,8 @@ describe("Stream Info HTML actions", () => {
     expect(document.querySelector('[data-action="edit-twitch"]')).toBeNull();
     expect(document.querySelector('[data-action="edit-youtube"]')).toBeNull();
     expect(document.querySelectorAll('.inline-editor')).toHaveLength(2);
+    expect(document.querySelectorAll('[data-action="title-mode"][data-mode="subtitle"].active')).toHaveLength(2);
+    click("title-mode", 1);
     setValue('[data-input="inline-title"][data-kind="twitch"]', "Inline Twitch title");
     expect(document.querySelector('.modal')).toBeNull();
     expect(document.querySelector<HTMLInputElement>('[data-input="inline-title"][data-kind="twitch"]')?.value).toBe("Inline Twitch title");
@@ -209,6 +211,8 @@ describe("Stream Info HTML actions", () => {
     expect(document.querySelectorAll('[data-scope="all-twitch"][data-action="remove-tag"]')).toHaveLength(2);
     click("remove-tag", 1);
     expect(document.querySelectorAll('[data-scope="all-twitch"][data-action="remove-tag"]')).toHaveLength(1);
+    click("title-mode", 1);
+    click("title-mode", 3);
     setValue('[data-input="inline-title"][data-kind="twitch"]', "Новое Twitch название");
     setValue('[data-input="inline-title"][data-kind="youtube"]', "Новое YouTube название");
     setValue('[data-input="category-query"][data-scope="all-youtube"]', "В");

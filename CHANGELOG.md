@@ -2,7 +2,11 @@
 
 [Русская версия](#история-изменений)
 
-## Unreleased
+## 1.3.0 — 2026-10-11
+
+- Default both platform title editors to template mode when opening the page.
+- Cache Streamer.bot state for five seconds, invalidate after writes, and reuse the Twitch HTTP client with a ten-second timeout.
+- Remove product branding from the header.
 
 - Edit titles, categories, and tags directly in platform cards with one Apply button; remove the Update all button and stream editor modals.
 - Preserve unsaved inline drafts across data refreshes and settings dialogs.
@@ -39,7 +43,11 @@
 
 [English version](#changelog)
 
-### Не выпущено
+### 1.3.0 — 2026-10-11
+
+- При открытии страницы оба редактора названий используют режим «По шаблону».
+- Состояние Streamer.bot кешируется на пять секунд со сбросом после записи; HTTP-клиент Twitch используется повторно с таймаутом десять секунд.
+- Убрано название продукта из шапки.
 
 - Названия, категории и теги редактируются прямо в карточках с общей кнопкой «Применить»; кнопка «Обновить все» и модальные редакторы убраны.
 - Несохранённый ввод сохраняется при обновлении данных и открытии настроек.

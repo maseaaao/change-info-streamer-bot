@@ -2,6 +2,11 @@
 
 [Русская версия](#история-изменений)
 
+## 1.3.1 — 2026-10-12
+
+- Refresh the standalone Dock with the Cyber-Monolith theme, embedded local fonts and 44 px controls.
+- Keep repository tests independent of other local workspace projects.
+
 ## 1.3.0 — 2026-10-11
 
 - Default both platform title editors to template mode when opening the page.
@@ -42,6 +47,11 @@
 ## История изменений
 
 [English version](#changelog)
+
+### 1.3.1 — 2026-10-12
+
+- Обновлено оформление Dock: тема Cyber-Monolith, встроенные шрифты и элементы управления высотой 44 px.
+- Проверки репозитория не зависят от соседних локальных проектов.
 
 ### 1.3.0 — 2026-10-11
 

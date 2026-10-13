@@ -4,7 +4,9 @@
 
 One self-contained HTML control surface for updating Twitch and YouTube stream metadata from an OBS dock. It connects only to Streamer.bot’s local WebSocket; there is no hosted service, OAuth page, or external UI dependency.
 
-![Russian dashboard showcase](docs/screenshots/dashboard-ru.png)
+![English dashboard showcase](docs/screenshots/dashboard-en.png)
+
+Version 1.3.2 interface; screenshots refreshed on October 14, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
 
 ## What it does
 
@@ -14,6 +16,8 @@ One self-contained HTML control surface for updating Twitch and YouTube stream m
 - Opens the correct YouTube Studio destination for both live and non-live states.
 - Ships as a single file that can be opened directly with `file://`.
 - Builds fully localized HTML in Russian, English, Spanish, and Simplified Chinese.
+- Preserves platform selection and drafts across data refreshes and Settings.
+- Supports keyboard-driven Twitch category search, retry, and more results.
 
 ## Quick start
 
@@ -23,6 +27,22 @@ One self-contained HTML control surface for updating Twitch and YouTube stream m
 4. Return to Stream Info and select **Check again**.
 
 The page automatically connects to `ws://127.0.0.1:8080/`. If your WebSocket requires a password, enter it in the compact connection panel or in Settings. Twitch credentials remain inside the Streamer.bot Action and are never embedded in the HTML file.
+
+The import requires Streamer.bot 1.0.6 or later. Connect the Twitch/YouTube accounts in Streamer.bot and make sure `STREAM INFO | API` is enabled. YouTube updates require an active broadcast; Twitch can also be updated while offline.
+
+## Using the OBS dock
+
+Open the chosen HTML through an OBS custom browser dock using its local `file:///…` URL. Dock it wherever convenient; platform cards stack vertically at narrow widths.
+
+1. Select platforms using the switches beside **Subtitle**. Disabled cards are hidden and retain their drafts.
+2. Enter the shared subtitle and check the resulting titles. Both platforms start in **Use template** mode when the page opens.
+3. Switch a card to **Full title** to enter a separate title. The next subtitle edit returns selected platforms to template mode.
+4. Select a category from suggestions, add tags with Enter, and remove tags with the cross button. Select a result or clear an unfinished category query.
+5. Select the shared **Apply** button to save the subtitle and send changed fields to available selected platforms. Check error messages for each platform separately.
+
+The header refresh button rereads state while retaining unsaved edits. Card footer buttons open the stream and platform dashboard; game presets appear below the cards. A preset runs its Action and can change metadata according to that Action's own settings.
+
+Platform selection and connection settings are saved in this browser. The password is stored only when **Remember password** is enabled. Templates and the subtitle are stored in persistent Streamer.bot globals; moving the HTML does not transfer browser settings or drafts.
 
 ## Languages and builds
 
@@ -42,7 +62,17 @@ npm run build
 
 For a safe visual tour with sample data, append `?demo=1` to any built HTML file. Demo mode does not connect to Streamer.bot or make platform changes.
 
-![English full-screen editor showcase](docs/screenshots/modal-en.png)
+## Connection and template settings
+
+The gear button opens Host, Port, Endpoint, and WebSocket password settings. **Save** saves connection settings. Templates have a separate **Save templates** button: check the previews and length counters first. **Reset** fills the editors with default templates; save them to persist the reset. Closing Settings preserves unsaved main-page edits.
+
+![Connection and template settings](docs/screenshots/settings-en.png)
+
+## Updating an installed panel
+
+Replace the HTML at the actual path used by the OBS dock, then reload the dock. Building `dist/` does not update an external copy automatically. If C# or the import changed, re-import the new `streamerbot-import.txt` and check Execute Code compilation in Streamer.bot. Back up working files before replacing them.
+
+If the panel reports a missing, disabled, or outdated Action, check `STREAM INFO | API`, complete the suggested import, and select **Check again**. For connection problems, compare Host, Port, Endpoint, and password with Streamer.bot's WebSocket settings.
 
 ## Category search
 
@@ -80,6 +110,7 @@ The imported `STREAM INFO | API` Action also subscribes to **YouTube → Broadca
 
 ```powershell
 npm install
+npm run check
 npm test
 npm run build
 ```

@@ -44,6 +44,16 @@ For a safe visual tour with sample data, append `?demo=1` to any built HTML file
 
 ![English full-screen editor showcase](docs/screenshots/modal-en.png)
 
+## Category search
+
+Twitch search merges full-name/ID lookup candidates with autocomplete instead of hiding alternatives after a lookup succeeds. Ranking accounts for whitespace, punctuation, diacritics and Unicode while preserving original names and IDs. Numeric input can be a title or an ID. Common CS2, LoL, GTA5 and WoW retrieval hints are configured in `streamerbot/category-search-service.cs`; hints expand provider queries, not the selected category.
+
+Results appear in batches of 20 after ranking. More reveals additional candidates and fetches continuation pages when needed. A provider's first page is not assumed to be the complete catalog. Successful searches use a bounded 30-second cache; failed and partial responses are not cached. The separate five-second stream-state cache is unchanged.
+
+Use arrows to activate an option, Enter to select it, and Escape to clear the query. The actual selected category stays visible. Select a result or clear an unresolved query before applying changes; typed text never implicitly changes metadata. Settings and background refresh preserve the draft. Errors differ from no matches, with retry and partial-result warnings.
+
+Run `node scripts/verify-category-search-live.mjs` for safe acceptance checks against an installed Action. It only searches categories and never applies metadata or runs presets. After a C# change, update the Action from the new import and separately refresh the HTML at the actual OBS dock path.
+
 ## Templates and presets
 
 Title templates are configured in **Settings**. The first workspace block is **Subtitle**: it saves the subtitle and applies the resulting titles to connected Twitch and an active YouTube broadcast. Each template may contain at most one `%subtitle%` token.

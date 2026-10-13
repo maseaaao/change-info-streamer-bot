@@ -1,0 +1,12 @@
+[
+  {"name":"exact plus continuations","query":"Aniimo","results":[{"id":"1","name":"Animorphs"},{"id":"2","name":"Aniimo Demo"},{"id":"3","name":"Aniimo"}],"expected":["3","2","1"]},
+  {"name":"punctuation equivalent title before longer substring","query":"Counter Strike","results":[{"id":"1","name":"Commando Sniper Counter Strike"},{"id":"2","name":"Counter-Strike 2"},{"id":"3","name":"Counter-Strike"}],"expected":["3","2","1"]},
+  {"name":"literal exact before diacritic equivalent","query":"Pokemon","results":[{"id":"1","name":"Pocket Monster"},{"id":"2","name":"Pokémon"},{"id":"3","name":"Pokemon"},{"id":"4","name":"Pokémon Legends"}],"expected":["3","2","4","1"]},
+  {"name":"unicode decomposition","query":"Café","results":[{"id":"1","name":"Coffee"},{"id":"2","name":"Café"},{"id":"3","name":"Cafe Simulator"}],"expected":["2","3","1"]},
+  {"name":"word prefix before midword substring","query":"rust","results":[{"id":"1","name":"Crust"},{"id":"2","name":"The Rust Adventures"},{"id":"3","name":"Rust Simulator"},{"id":"4","name":"Rust"}],"expected":["4","3","2","1"]},
+  {"name":"stable fuzzy ties","query":"unmatched","results":[{"id":"9","name":"Zulu"},{"id":"2","name":"Alpha"}],"expected":["9","2"]},
+  {"name":"duplicate IDs","query":"game","results":[{"id":"1","name":"Game"},{"id":"1","name":"Game"},{"id":"2","name":"Game Two"}],"expected":["1","2"]},
+  {"name":"numeric title and ID coexist","query":"2048","results":[{"id":"3","name":"2048"},{"id":"2048","name":"Other"},{"id":"4","name":"2048 Deluxe"}],"expected":["3","2048","4"]},
+  {"name":"case and whitespace","query":"  FINAL   FANTASY ","results":[{"id":"1","name":"FINAL FANTASY XIV"},{"id":"2","name":"Final Fantasy"},{"id":"3","name":"Other"}],"expected":["2","1","3"]},
+  {"name":"unicode word separators","query":"game","results":[{"id":"1","name":"Endgame"},{"id":"2","name":"New—Game"}],"expected":["2","1"]}
+]

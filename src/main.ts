@@ -2,6 +2,7 @@ import { StreamerbotClient } from "@streamerbot/client";
 import packageJson from "../package.json";
 import { brandIcon, uiIcon } from "./icons";
 import { FALLBACK_CATEGORY_SVG, YOUTUBE_CATEGORIES } from "./youtube-categories";
+import { rankCategories } from "./category-search";
 import STREAMERBOT_IMPORT from "../streamerbot-import.txt?raw";
 import { DEFAULT_TWITCH_TEMPLATE, DEFAULT_YOUTUBE_TEMPLATE, isTemplateValid, titleFromTemplate } from "./templates";
 import { locale, localeTag, t } from "./i18n";
@@ -195,9 +196,53 @@ document.documentElement.lang = locale;
 document.title = "Stream Info";
 
 let client: StreamerbotClient | null = null;
-let requestResolvers = new Map<string, { resolve: (response: ActionResponse) => void; reject: (reason: Error) => void; timer: number }>();
+let connectionGeneration = 0;
+let stateRevision = 0;
+let requestResolvers = new Map<string, { generation: number; resolve: (response: ActionResponse) => void; reject: (reason: Error) => void; timer: number }>();
 let pollingId: number | null = null;
 let searchTimer: number | null = null;
+let searchGeneration = 0;
+let twitchSearching = false;
+let searchError: string | null = null;
+let searchCursor: string | null = null;
+let searchHasMore = false;
+let searchWarnings: string[] = [];
+let searchPartial = false;
+let visibleCategories = 20;
+let failedSearch: SearchJob | null = null;
+interface SearchJob { query: string; generation: number; cursor?: string }
+let searchFlight: SearchJob | null = null;
+let queuedSearch: SearchJob | null = null;
+let composingCategory: HTMLInputElement | null = null;
+let deferredRender = false;
+let modalReturnFocus: HTMLElement | null = null;
+const activeCategory: Record<Platform, string | null> = { twitch: null, youtube: null };
+
+function resetCategorySearch(): void {
+  ++searchGeneration;
+  activeCategory.twitch = null;
+  if (searchTimer !== null) window.clearTimeout(searchTimer);
+  searchTimer = null;
+  queuedSearch = null;
+  twitchSearching = false;
+  searchError = null;
+  searchCursor = null;
+  searchHasMore = false;
+  searchWarnings = [];
+  searchPartial = false;
+  visibleCategories = 20;
+  failedSearch = null;
+  state.twitchResults = [];
+  state.twitchSearchFor = "";
+}
+
+function rejectPendingRequests(): void {
+  for (const pending of requestResolvers.values()) {
+    window.clearTimeout(pending.timer);
+    pending.reject(new Error(t("connectionChanged")));
+  }
+  requestResolvers.clear();
+}
 let actionCheckRunning = false;
 
 function escapeHtml(value: string | number | null | undefined): string {
@@ -350,9 +395,13 @@ function renderMain(): string {
   return `<main class="content"><div class="subtitle-top">${subtitlePanel()}</div><div class="cards">${settings.twitchEnabled ? renderTwitchCard(stream.twitch) : ""}${settings.youtubeEnabled ? renderYouTubeCard(stream.youtube) : ""}</div><div class="presets-below">${presetPanel()}</div><div class="updated-at"><span>${t("updated")} ${escapeHtml(stamp)}</span><span>v${APP_VERSION}</span></div></main>`;
 }
 
+function categoryOptionId(platform: Platform, id: string): string {
+  return `category-${platform}-${encodeURIComponent(id)}`;
+}
+
 function renderCategoryOption(category: TwitchCategory | YouTubeCategory, kind: Platform, scope: string): string {
   const visual = kind === "twitch" ? categoryImage((category as TwitchCategory).imageUrl) : `<span class="category-image youtube-category-icon">${(category as YouTubeCategory).iconSvg}</span>`;
-  return `<button type="button" class="category-option" data-action="choose-category" data-kind="${kind}" data-scope="${scope}" data-id="${escapeHtml(category.id)}">${visual}<span><strong>${escapeHtml(category.name)}</strong><small>ID: ${escapeHtml(category.id)}</small></span></button>`;
+  return `<button type="button" class="category-option" id="${escapeHtml(categoryOptionId(kind, category.id))}" role="option" aria-selected="${activeCategory[kind] === category.id}" data-action="choose-category" data-kind="${kind}" data-scope="${scope}" data-id="${escapeHtml(category.id)}">${visual}<span><strong>${escapeHtml(category.name)}</strong><small>ID: ${escapeHtml(category.id)}</small></span></button>`;
 }
 
 function renderTagInput(tags: string[], draft: string, scope: string, disabled: boolean): string {
@@ -360,11 +409,63 @@ function renderTagInput(tags: string[], draft: string, scope: string, disabled: 
 }
 
 function categoryControl(platform: Platform, selected: TwitchCategory | YouTubeCategory | null, query: string, scope: string, disabled: boolean): string {
-  const results = platform === "twitch" ? state.twitchResults : YOUTUBE_CATEGORIES.filter((item) => `${item.name} ${item.id}`.toLocaleLowerCase(localeTag[locale]).includes(query.toLocaleLowerCase(localeTag[locale]))).slice(0, 20);
+  const ranked = platform === "twitch" ? rankCategories(state.twitchResults, query) : YOUTUBE_CATEGORIES.filter(item => `${item.name} ${item.id}`.toLocaleLowerCase(localeTag[locale]).includes(query.toLocaleLowerCase(localeTag[locale])));
+  const results = ranked.slice(0, platform === "twitch" ? visibleCategories : 20);
   const visible = query.trim().length >= (platform === "twitch" ? 2 : 1);
   const current = selected ? `${selected.name} · ID ${selected.id}` : "";
   const visual = selected ? (platform === "twitch" ? categoryImage((selected as TwitchCategory).imageUrl) : `<span class="category-image youtube-category-icon">${(selected as YouTubeCategory).iconSvg}</span>`) : "";
-  return `<div class="autocomplete">${selected && !query ? `<div class="selected-category">${visual}<span>${escapeHtml(current)}</span></div>` : ""}<label>${t("category")}<input data-input="category-query" data-kind="${platform}" data-scope="${scope}" value="${escapeHtml(query)}" placeholder="${escapeHtml(current || t("categorySearch"))}" autocomplete="off"${disabled ? " disabled" : ""} /></label>${visible && !disabled ? `<div class="autocomplete-list">${results.length ? results.map((item) => renderCategoryOption(item, platform, scope)).join("") : `<span class="empty-option">${t("nothingFound")}</span>`}</div>` : ""}</div>`;
+  const loading = platform === "twitch" && twitchSearching;
+  const error = platform === "twitch" ? searchError : null;
+  const more = platform === "twitch" && (ranked.length > visibleCategories || searchHasMore);
+  const status = loading ? t("categorySearching") : error ? error : !results.length && !more ? t("nothingFound") : t("categoryResultCount", { count: results.length });
+  const warning = platform === "twitch" && searchPartial ? `<div class="category-search-warning" role="status">${escapeHtml(t("categoryPartial"))}${searchWarnings.length ? `<br>${searchWarnings.map(escapeHtml).join("<br>")}` : ""}</div>` : "";
+  if (activeCategory[platform] && !results.some(item => item.id === activeCategory[platform])) activeCategory[platform] = null;
+  const active = activeCategory[platform];
+  const list = `${results.map(item => renderCategoryOption(item, platform, scope)).join("")}<div class="category-search-status" role="${error ? "alert" : "status"}" aria-live="polite">${escapeHtml(status)}</div>${warning}${error ? button(t("categoryRetry"), "retry-category-search") : ""}${more ? button(t("categoryMore"), "more-categories", { data: `aria-disabled="${loading}"` }) : ""}`;
+  return `<div class="autocomplete">${selected ? `<div class="selected-category">${visual}<span>${escapeHtml(current)}</span></div>` : ""}<label>${t("category")}<input data-input="category-query" data-kind="${platform}" data-scope="${scope}" value="${escapeHtml(query)}" placeholder="${escapeHtml(current || t("categorySearch"))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${visible && !disabled}" aria-controls="category-list-${platform}"${active ? ` aria-activedescendant="${escapeHtml(categoryOptionId(platform, active))}"` : ""}${disabled ? " disabled" : ""} /></label>${visible && !disabled ? `<div class="autocomplete-list" id="category-list-${platform}" role="listbox" aria-label="${escapeHtml(t("category"))}">${list}</div>` : ""}</div>`;
+}
+
+// Search updates only its suggestions; retain the actual input, caret and IME.
+function renderCategoryResults(platform: Platform): void {
+  if (composingCategory?.dataset.kind === platform) { deferredRender = true; return; }
+  const optionFocus = focusedCategoryOption();
+  const scope = `all-${platform}`;
+  const input = app.querySelector<HTMLInputElement>(`[data-input="category-query"][data-scope="${scope}"]`);
+  const control = input?.closest<HTMLElement>(".autocomplete");
+  const form = state.allForm;
+  if (!input || !control || !form) return;
+  const scrollTop = control.querySelector(".autocomplete-list")?.scrollTop ?? 0;
+  const focusedAction = control.contains(document.activeElement) && document.activeElement instanceof HTMLElement ? document.activeElement.dataset.action : null;
+  const template = document.createElement("template");
+  template.innerHTML = categoryControl(platform, platform === "twitch" ? form.twitchCategory : form.youtubeCategory, input.value, scope, input.disabled);
+  const nextInput = template.content.querySelector("input");
+  for (const name of ["role", "aria-autocomplete", "aria-expanded", "aria-controls", "aria-activedescendant"]) {
+    const value = nextInput?.getAttribute(name);
+    if (value == null) input.removeAttribute(name); else input.setAttribute(name, value);
+  }
+  control.querySelectorAll(".selected-category, .autocomplete-list").forEach(node => node.remove());
+  const selected = template.content.querySelector(".selected-category");
+  const list = template.content.querySelector(".autocomplete-list");
+  if (selected) control.prepend(selected);
+  if (list) { control.append(list); list.scrollTop = scrollTop; }
+  updateApplyValidation();
+  restoreCategoryOption(optionFocus);
+  if (focusedAction && focusedAction !== "choose-category" && !state.modal) {
+    (control.querySelector<HTMLElement>(`[data-action="${focusedAction}"]`) ?? input).focus();
+  }
+}
+
+function updateApplyValidation(): void {
+  const panel = app.querySelector(".subtitle-panel");
+  if (!panel) return;
+  const template = document.createElement("template");
+  template.innerHTML = subtitlePanel();
+  const current = panel.querySelector('[data-action="save-all"]');
+  const next = template.content.querySelector('[data-action="save-all"]');
+  if (current && next) current.replaceWith(next);
+  panel.querySelector(".form-errors")?.remove();
+  const errors = template.content.querySelector(".form-errors");
+  if (errors) panel.append(errors);
 }
 
 function titleCounter(title: string, max: number): string {
@@ -495,12 +596,54 @@ function focusedField(): { input: string; scope: string; start: number | null; e
   return { input, scope: active.dataset.scope ?? "", start: active.selectionStart, end: active.selectionEnd };
 }
 
+function focusedDialogAction(): string | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return null;
+  const dialog = active.closest('[role="dialog"]');
+  return dialog ? active.dataset.action ?? null : null;
+}
+
+function focusedCategoryOption(): { id: string; kind: string } | null {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.dataset.action === "choose-category"
+    ? { id: active.dataset.id ?? "", kind: active.dataset.kind ?? "" } : null;
+}
+
+function restoreCategoryOption(focus: ReturnType<typeof focusedCategoryOption>): void {
+  if (!focus || state.modal) return;
+  const next = Array.from(app.querySelectorAll<HTMLElement>('[data-action="choose-category"]')).find(option => option.dataset.id === focus.id && option.dataset.kind === focus.kind);
+  next?.focus();
+}
+
 function render(): void {
   if (!app.isConnected) return;
+  if (composingCategory) { deferredRender = true; return; }
   const focus = focusedField();
+  const optionFocus = focusedCategoryOption();
+  const dialogActionFocus = focusedDialogAction();
+  const retainedInputs = Array.from(app.querySelectorAll<HTMLInputElement>('[data-input="category-query"]'));
   const primary = state.actionStatus === "missing" || state.actionStatus === "disabled" || state.actionStatus === "outdated" ? renderImport() : renderMain();
   const modal = state.modal === "settings" ? settingsModal() : "";
   app.innerHTML = `${renderHeader()}${authPanel()}${primary}${modal}${noticesHtml()}`;
+  for (const old of retainedInputs) {
+    const next = app.querySelector<HTMLInputElement>(`[data-input="category-query"][data-kind="${old.dataset.kind}"]`);
+    if (!next) continue;
+    const value = next.value;
+    for (const attribute of Array.from(old.attributes)) old.removeAttribute(attribute.name);
+    for (const attribute of Array.from(next.attributes)) old.setAttribute(attribute.name, attribute.value);
+    if (old.value !== value) old.value = value;
+    next.replaceWith(old);
+  }
+  restoreCategoryOption(optionFocus);
+  if (state.modal) {
+    for (const child of Array.from(app.children)) if (!child.classList.contains("modal-backdrop")) child.setAttribute("inert", "");
+    const dialog = app.querySelector<HTMLElement>('[role="dialog"]');
+    if (dialogActionFocus) {
+      dialog?.querySelector<HTMLElement>(`[data-action="${dialogActionFocus}"]`)?.focus();
+      return;
+    }
+    if (!focus || !focus.input.startsWith("settings-")) { dialog?.querySelector<HTMLElement>("button, input, textarea")?.focus(); return; }
+  }
   if (!focus) return;
   const selector = `[data-input="${focus.input}"]${focus.scope ? `[data-scope="${focus.scope}"]` : ":not([data-scope])"}`;
   const next = app.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
@@ -564,24 +707,26 @@ function handleCodeEvent(payload: unknown): void {
   const response = root.args as unknown as ActionResponse;
   if (typeof response.requestId !== "string") return;
   const pending = requestResolvers.get(response.requestId);
-  if (!pending) return;
+  if (!pending || pending.generation !== connectionGeneration) return;
   window.clearTimeout(pending.timer);
   requestResolvers.delete(response.requestId);
   pending.resolve(response);
 }
 
 async function connect(): Promise<void> {
+  const generation = ++connectionGeneration;
+  const previous = client;
+  client = null;
+  actionCheckRunning = false;
+  resetCategorySearch();
   state.connection = "connecting";
   state.connectionError = null;
   render();
-  for (const pending of requestResolvers.values()) {
-    clearTimeout(pending.timer);
-    pending.reject(new Error(t("connectionChanged")));
+  rejectPendingRequests();
+  if (previous) {
+    try { await previous.disconnect(); } catch { /* the old socket may already be closed */ }
   }
-  requestResolvers = new Map();
-  if (client) {
-    try { await client.disconnect(); } catch { /* the old socket may already be closed */ }
-  }
+  if (generation !== connectionGeneration) return;
   const next = new StreamerbotClient({
     host: settings.host,
     port: settings.port,
@@ -591,14 +736,20 @@ async function connect(): Promise<void> {
     autoReconnect: true,
     retries: -1,
     logLevel: "none",
-    onConnect: () => { void onConnected(); },
+    onConnect: () => { if (isCurrent()) void onConnected(generation); },
     onDisconnect: () => {
+      if (!isCurrent()) return;
+      ++stateRevision;
+      actionCheckRunning = false;
+      resetCategorySearch();
+      rejectPendingRequests();
       state.connection = "disconnected";
       state.actionStatus = "unknown";
       state.stream = null;
       render();
     },
     onError: (error: unknown) => {
+      if (!isCurrent()) return;
       const message = error instanceof Error ? error.message : t("connectFailed");
       state.connectionError = message;
       state.connection = "disconnected";
@@ -606,11 +757,14 @@ async function connect(): Promise<void> {
       render();
     },
   });
+  const isCurrent = () => generation === connectionGeneration && client === next;
   client = next;
-  await next.on("Custom.CodeEvent", handleCodeEvent);
   try {
+    await next.on("Custom.CodeEvent", payload => { if (isCurrent()) handleCodeEvent(payload); });
+    if (!isCurrent()) return;
     await next.connect();
   } catch (error) {
+    if (!isCurrent()) return;
     const message = error instanceof Error ? error.message : t("connectFailed");
     state.connection = "disconnected";
     state.connectionError = message;
@@ -619,21 +773,29 @@ async function connect(): Promise<void> {
   }
 }
 
-async function onConnected(): Promise<void> {
+async function onConnected(generation = connectionGeneration): Promise<void> {
+  if (generation !== connectionGeneration) return;
   state.connection = "connected";
   state.connectionError = null;
   state.authNeeded = false;
   render();
   await verifyAction();
+  if (generation !== connectionGeneration || state.connection !== "connected") return;
+  if (state.allForm?.twitchCategoryQuery.trim()) scheduleTwitchSearch(state.allForm.twitchCategoryQuery);
 }
 
 async function verifyAction(): Promise<void> {
   if (!client?.ready || actionCheckRunning) return;
+  const owner = client;
+  const generation = connectionGeneration;
+  const revision = stateRevision;
+  const isCurrent = () => generation === connectionGeneration && owner === client && revision === stateRevision;
   actionCheckRunning = true;
   state.actionStatus = "unknown";
   render();
   try {
-    const response = await client.getActions();
+    const response = await owner.getActions();
+    if (!isCurrent()) return;
     const action = response.actions.find((candidate) => candidate.group === ACTION_GROUP && candidate.name === ACTION_NAME) ?? null;
     state.action = action ? { id: action.id, name: action.name, group: action.group, enabled: action.enabled } : null;
     state.presetActions = response.actions
@@ -642,27 +804,31 @@ async function verifyAction(): Promise<void> {
     state.actionStatus = !action ? "missing" : !action.enabled ? "disabled" : "ready";
     if (state.actionStatus === "ready") await refreshState();
   } catch (error) {
+    if (!isCurrent()) return;
     state.connection = "disconnected";
     state.connectionError = error instanceof Error ? error.message : t("actionsFailed");
     state.authNeeded = /auth|password|credential/i.test(state.connectionError);
   } finally {
-    actionCheckRunning = false;
-    render();
+    if (generation === connectionGeneration && owner === client) { actionCheckRunning = false; render(); }
   }
 }
 
 async function callAction(command: string, payload: Record<string, unknown> = {}): Promise<ActionResponse> {
   if (!client?.ready || !state.action) throw new Error(t("actionUnavailable"));
+  const owner = client;
+  const generation = connectionGeneration;
   const requestId = uuid();
   const reply = new Promise<ActionResponse>((resolve, reject) => {
     const timer = window.setTimeout(() => {
       requestResolvers.delete(requestId);
       reject(new Error(t("actionTimeout")));
     }, REQUEST_TIMEOUT);
-    requestResolvers.set(requestId, { resolve, reject, timer });
+    requestResolvers.set(requestId, { generation, resolve, reject, timer });
   });
+  // Retirement can reject the reply before the transport acknowledgement.
+  void reply.catch(() => undefined);
   try {
-    await client.doAction({ id: state.action.id }, { command, requestId, payloadJson: JSON.stringify(payload) });
+    await owner.doAction({ id: state.action.id }, { command, requestId, payloadJson: JSON.stringify(payload) });
   } catch (error) {
     const pending = requestResolvers.get(requestId);
     if (pending) {
@@ -733,8 +899,12 @@ async function runPreset(id: string, name: string): Promise<void> {
 
 async function refreshState(showError = true): Promise<void> {
   if (state.actionStatus !== "ready") return;
+  const generation = connectionGeneration;
+  const revision = ++stateRevision;
+  const isCurrent = () => generation === connectionGeneration && revision === stateRevision;
   try {
     const response = await callAction("getState");
+    if (!isCurrent()) return;
     if (!response.ok || !response.data) throw new Error(response.error?.message ?? t("actionStateFailed"));
     const stream = normalizeStream(response.data);
     if (stream.apiVersion !== API_VERSION || response.apiVersion !== API_VERSION) {
@@ -747,9 +917,10 @@ async function refreshState(showError = true): Promise<void> {
     if (!state.allDirty && !state.allSaving) initializeEditor();
     state.lastUpdated = new Date();
   } catch (error) {
+    if (!isCurrent()) return;
     if (showError) notify(t("refreshFailed"), [error instanceof Error ? error.message : t("unknownError")]);
   } finally {
-    render();
+    if (isCurrent()) render();
   }
 }
 
@@ -767,6 +938,7 @@ function categoryFromState(platform: Platform): TwitchCategory | YouTubeCategory
 function initializeEditor(): void {
   if (!state.stream) return;
   const previous = state.allForm;
+  resetCategorySearch();
   state.allForm = {
     subtitle: state.templateDraft.subtitle,
     twitchTitle: state.stream.twitch.title ?? "",
@@ -802,9 +974,10 @@ function initializeEditor(): void {
 
 function clearModal(): void {
   state.modal = null;
-  state.twitchResults = [];
-  state.twitchSearchFor = "";
   render();
+  if (modalReturnFocus?.isConnected) modalReturnFocus.focus();
+  else app.querySelector<HTMLElement>('[data-action="open-settings"]')?.focus();
+  modalReturnFocus = null;
 }
 
 function tagsEqual(a: string[], b: string[]): boolean {
@@ -835,6 +1008,8 @@ function validateYouTube(title: string, tags: string[]): string[] {
 
 function validateAll(form: AllForm): string[] {
   const messages: string[] = [];
+  if (platformAvailable("twitch") && form.twitchCategoryQuery.trim()) messages.push(t("categorySelectionRequired", { platform: "Twitch" }));
+  if (platformAvailable("youtube") && form.youtubeCategoryQuery.trim()) messages.push(t("categorySelectionRequired", { platform: "YouTube" }));
   if (platformAvailable("twitch")) messages.push(...validateTwitch(inlineTitle("twitch", form), form.twitchTags));
   if (platformAvailable("youtube")) messages.push(...validateYouTube(inlineTitle("youtube", form), form.youtubeTags));
   return messages;
@@ -943,28 +1118,52 @@ function chooseCategory(kind: Platform, scope: string, id: string): void {
   if (scope === "all-twitch" && state.allForm && kind === "twitch") { state.allForm.twitchCategory = category as TwitchCategory; state.allForm.twitchCategoryQuery = ""; }
   if (scope === "all-youtube" && state.allForm && kind === "youtube") { state.allForm.youtubeCategory = category as YouTubeCategory; state.allForm.youtubeCategoryQuery = ""; }
   state.allDirty = true;
-  state.twitchResults = [];
+  activeCategory[kind] = null;
+  if (kind === "twitch") resetCategorySearch();
   render();
+  app.querySelector<HTMLInputElement>(`[data-input="category-query"][data-scope="${scope}"]`)?.focus();
+}
+
+async function runSearch(job: SearchJob): Promise<void> {
+  if (searchFlight) { queuedSearch = job; return; }
+  searchFlight = job;
+  try {
+    const response = await callAction("searchTwitchCategories", { query: job.query, ...(job.cursor ? { cursor: job.cursor } : {}) });
+    if (job.generation !== searchGeneration) return;
+    if (response.ok !== true || !isRecord(response.data) || !Array.isArray(response.data.results)) throw new Error(response.error?.message ?? t("categorySearchFailed"));
+    const incoming = response.data.results.filter(isRecord).map(item => ({ id: String(item.id ?? ""), name: String(item.name ?? ""), imageUrl: String(item.imageUrl ?? "") })).filter(item => item.id && item.name);
+    state.twitchResults = rankCategories(job.cursor ? [...state.twitchResults, ...incoming] : incoming, job.query);
+    searchCursor = typeof response.data.cursor === "string" && response.data.cursor ? response.data.cursor : null;
+    searchHasMore = response.data.hasMore === true && searchCursor !== null;
+    searchPartial = (Boolean(job.cursor) && searchPartial) || response.data.partial === true;
+    searchWarnings = Array.from(new Set([...(job.cursor ? searchWarnings : []), ...asStringArray(response.data.warnings)]));
+    searchError = null;
+    failedSearch = null;
+    if (job.cursor) visibleCategories += 20;
+  } catch (error) {
+    if (job.generation === searchGeneration) { searchError = error instanceof Error ? error.message : t("categorySearchFailed"); failedSearch = job; }
+  } finally {
+    searchFlight = null;
+    if (job.generation === searchGeneration) {
+      twitchSearching = false;
+      renderCategoryResults("twitch");
+    }
+    const next = queuedSearch;
+    queuedSearch = null;
+    if (next && next.generation === searchGeneration) void runSearch(next);
+  }
 }
 
 function scheduleTwitchSearch(query: string): void {
-  if (searchTimer) window.clearTimeout(searchTimer);
-  state.twitchResults = [];
-  if (query.trim().length < 2) { render(); return; }
+  resetCategorySearch();
   const requested = query.trim();
   state.twitchSearchFor = requested;
-  searchTimer = window.setTimeout(async () => {
-    try {
-      const response = await callAction("searchTwitchCategories", { query: requested });
-      const result = isRecord(response.data) && Array.isArray(response.data.results) ? response.data.results : [];
-      if (state.twitchSearchFor !== requested) return;
-      state.twitchResults = result.filter(isRecord).map((item) => ({ id: String(item.id ?? ""), name: String(item.name ?? ""), imageUrl: String(item.imageUrl ?? "") })).filter((item) => item.id && item.name);
-    } catch (error) {
-      if (state.twitchSearchFor === requested) notify(t("categorySearchFailed"), [error instanceof Error ? error.message : t("unknownError")]);
-    }
-    render();
-  }, 300);
-  render();
+  twitchSearching = requested.length >= 2;
+  if (twitchSearching) {
+    const job: SearchJob = { query: requested, generation: searchGeneration };
+    searchTimer = window.setTimeout(() => { searchTimer = null; void runSearch(job); }, 250);
+  }
+  renderCategoryResults("twitch");
 }
 
 function openExternal(url: string): void {
@@ -1014,11 +1213,17 @@ function updateInput(target: HTMLInputElement | HTMLTextAreaElement): void {
       break;
     case "tag-draft": { state.allDirty = true; const holder = getTagHolder(scope); if (holder) holder.setDraft(target.value); break; }
     case "category-query": {
+      const previous = target.dataset.kind === "twitch" ? state.allForm?.twitchCategoryQuery : state.allForm?.youtubeCategoryQuery;
+      // Browsers emit change on blur after input. Do not erase the option
+      // under the pointer or restart an identical search before its click.
+      if (previous === target.value) return;
       state.allDirty = true;
       const kind = target.dataset.kind as Platform;
       if (scope === "all-twitch" && state.allForm) state.allForm.twitchCategoryQuery = target.value;
       if (scope === "all-youtube" && state.allForm) state.allForm.youtubeCategoryQuery = target.value;
-      if (kind === "twitch") scheduleTwitchSearch(target.value); else render();
+      activeCategory[kind] = null;
+      if (composingCategory === target) return;
+      if (kind === "twitch") scheduleTwitchSearch(target.value); else renderCategoryResults("youtube");
       return;
     }
     default: return;
@@ -1041,6 +1246,24 @@ async function copyImport(): Promise<void> {
   render();
 }
 
+app.addEventListener("compositionstart", event => {
+  const input = event.target;
+  if (input instanceof HTMLInputElement && input.dataset.input === "category-query") {
+    composingCategory = input;
+    if (input.dataset.kind === "twitch") resetCategorySearch();
+  }
+});
+
+app.addEventListener("compositionend", event => {
+  const input = event.target;
+  if (input !== composingCategory || !(input instanceof HTMLInputElement)) return;
+  composingCategory = null;
+  updateInput(input);
+  if (input.dataset.kind === "twitch") scheduleTwitchSearch(input.value);
+  else renderCategoryResults("youtube");
+  if (deferredRender) { deferredRender = false; render(); }
+});
+
 app.addEventListener("input", (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
@@ -1053,6 +1276,48 @@ app.addEventListener("change", (event) => {
 
 app.addEventListener("keydown", (event) => {
   const target = event.target;
+  if (event.isComposing || composingCategory) return;
+  if (state.modal) {
+    if (event.key === "Escape") { event.preventDefault(); clearModal(); return; }
+    if (event.key === "Tab") {
+      const dialog = app.querySelector<HTMLElement>('[role="dialog"]');
+      const fields = Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]') ?? []);
+      const index = fields.indexOf(document.activeElement as HTMLElement);
+      if (fields.length && (index < 0 || (!event.shiftKey && index === fields.length - 1) || (event.shiftKey && index === 0))) {
+        event.preventDefault();
+        fields[event.shiftKey ? fields.length - 1 : 0]?.focus();
+      }
+    }
+    return;
+  }
+  if (target instanceof HTMLElement && (target.dataset.input === "category-query" || target.dataset.action === "choose-category")) {
+    const platform = target.dataset.kind as Platform;
+    const input = app.querySelector<HTMLInputElement>(`[data-input="category-query"][data-kind="${platform}"]`);
+    if (!input || input.disabled) return;
+    const options = Array.from(input.closest(".autocomplete")?.querySelectorAll<HTMLElement>('[data-action="choose-category"]') ?? []);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const currentId = target.dataset.action === "choose-category" ? target.dataset.id : activeCategory[platform];
+      const index = options.findIndex(option => option.dataset.id === currentId);
+      const nextIndex = index < 0 ? (event.key === "ArrowDown" ? 0 : options.length - 1) : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+      activeCategory[platform] = options[nextIndex]?.dataset.id ?? null;
+      renderCategoryResults(platform);
+      if (activeCategory[platform]) {
+        const option = document.getElementById(categoryOptionId(platform, activeCategory[platform]!));
+        if (typeof option?.scrollIntoView === "function") option.scrollIntoView({ block: "nearest" });
+      }
+      input.focus();
+    } else if (event.key === "Enter" && target === input && activeCategory[platform]) {
+      event.preventDefault();
+      chooseCategory(platform, input.dataset.scope ?? "", activeCategory[platform]!);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      input.value = "";
+      updateInput(input);
+      input.focus();
+    }
+    return;
+  }
   if (!(target instanceof HTMLInputElement) || target.dataset.input !== "tag-draft") return;
   const scope = target.dataset.scope ?? "";
   if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addTag(scope); }
@@ -1070,7 +1335,7 @@ app.addEventListener("click", (event) => {
   if (target.hasAttribute("disabled")) return;
   switch (action) {
     case "refresh-state": void refreshState(); break;
-    case "open-settings": state.settingsDraft = { ...settings }; state.modal = "settings"; render(); break;
+    case "open-settings": modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : target; state.settingsDraft = { ...settings }; state.modal = "settings"; render(); break;
     case "connect-password": void connect(); break;
     case "copy-import": void copyImport(); break;
     case "toggle-import": state.showImport = !state.showImport; render(); break;
@@ -1088,13 +1353,21 @@ app.addEventListener("click", (event) => {
       break;
     case "remove-tag": { const holder = getTagHolder(target.dataset.scope ?? ""); const index = Number(target.dataset.index); if (holder && Number.isInteger(index)) { holder.tags.splice(index, 1); state.allDirty = true; render(); } break; }
     case "choose-category": chooseCategory(target.dataset.kind as Platform, target.dataset.scope ?? "", target.dataset.id ?? ""); break;
+    case "retry-category-search":
+      if (failedSearch && !twitchSearching) { searchError = null; twitchSearching = true; renderCategoryResults("twitch"); void runSearch(failedSearch); }
+      break;
+    case "more-categories":
+      if (twitchSearching) break;
+      if (rankCategories(state.twitchResults, state.twitchSearchFor).length > visibleCategories) { visibleCategories += 20; renderCategoryResults("twitch"); }
+      else if (searchHasMore && searchCursor) { twitchSearching = true; searchError = null; renderCategoryResults("twitch"); void runSearch({ query: state.twitchSearchFor, cursor: searchCursor, generation: searchGeneration }); }
+      break;
     case "save-all": void saveAll(); break;
     case "save-templates": void saveTemplates(); break;
     case "reset-templates": state.templateDraft = { twitchTemplate: DEFAULT_TWITCH_TEMPLATE, youtubeTemplate: DEFAULT_YOUTUBE_TEMPLATE, subtitle: state.templateDraft.subtitle }; state.templatesDirty = true; render(); break;
     case "run-preset": void runPreset(target.dataset.presetId ?? "", target.dataset.presetName ?? t("presetDefault")); break;
     case "save-settings": {
       settings = { ...state.settingsDraft, endpoint: state.settingsDraft.endpoint || "/", port: Math.max(1, Math.min(65535, Number(state.settingsDraft.port) || 8080)) };
-      state.allForm = null; state.allDirty = false;
+      // Connection settings do not discard unsaved stream metadata drafts.
       saveSettings(); clearModal(); void connect(); break;
     }
     case "close-notice": closeNotice(target.dataset.noticeId ?? ""); break;

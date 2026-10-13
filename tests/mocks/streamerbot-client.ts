@@ -23,8 +23,14 @@ interface MockStreamerbot {
   actions: ActionShape[];
   state: ReturnType<typeof defaultState>;
   actionCalls: Array<{ id: string; args: Record<string, unknown> }>;
+  instances: StreamerbotClient[];
   connectCalls: number;
   failConnect: boolean;
+  searchDelay: number;
+  searchReply: Record<string, unknown> | null;
+  deferSearch: boolean;
+  pendingSearches: Array<{ payload: Record<string, unknown>; reply: (envelope: Record<string, unknown>) => void }>;
+  disconnectHook: (() => void) | null;
   reset(): void;
 }
 
@@ -35,24 +41,38 @@ export const mockStreamerbot: MockStreamerbot = globalMocks[mockKey] ?? (globalM
   actions: [apiAction, presetAction] as ActionShape[],
   state: defaultState(),
   actionCalls: [] as Array<{ id: string; args: Record<string, unknown> }>,
+  instances: [],
   connectCalls: 0,
   failConnect: false,
+  searchDelay: 0,
+  searchReply: null,
+  deferSearch: false,
+  pendingSearches: [],
+  disconnectHook: null,
   reset(): void {
     this.actions = [apiAction, presetAction];
     this.state = defaultState();
     this.actionCalls = [];
+    this.instances = [];
     this.connectCalls = 0;
     this.failConnect = false;
+    this.searchDelay = 0;
+    this.searchReply = null;
+    this.deferSearch = false;
+    this.pendingSearches = [];
+    this.disconnectHook = null;
   },
 });
 
 export class StreamerbotClient {
   ready = true;
   private readonly handlers = new Map<string, CodeEventHandler>();
-  private readonly options: { onConnect?: () => void; onError?: (error: unknown) => void };
+  readonly options: { onConnect?: () => void; onError?: (error: unknown) => void; onDisconnect?: () => void };
 
-  constructor(options: { onConnect?: () => void; onError?: (error: unknown) => void }) {
+  constructor(options: { onConnect?: () => void; onError?: (error: unknown) => void; onDisconnect?: () => void }) {
     this.options = options;
+    mockStreamerbot.instances.push(this);
+    mockStreamerbot.disconnectHook = () => { this.ready = false; options.onDisconnect?.(); };
   }
 
   async on(event: string, handler: CodeEventHandler): Promise<void> {
@@ -87,6 +107,13 @@ export class StreamerbotClient {
       data = { templates: mockStreamerbot.state.templates };
     }
     const response = { apiVersion: 3, requestId: String(args.requestId ?? ""), command, ok: true, data, error: null };
-    queueMicrotask(() => this.handlers.get("Custom.CodeEvent")?.({ data: { eventName: "stream_info_api_response", args: response } }));
+    if (command === "searchTwitchCategories" && mockStreamerbot.deferSearch) {
+      mockStreamerbot.pendingSearches.push({ payload, reply: envelope => this.handlers.get("Custom.CodeEvent")?.({ data: { eventName: "stream_info_api_response", args: { ...response, ...envelope } } }) });
+      return;
+    }
+    if (command === "searchTwitchCategories" && mockStreamerbot.searchReply) Object.assign(response, mockStreamerbot.searchReply);
+    const emit = () => this.handlers.get("Custom.CodeEvent")?.({ data: { eventName: "stream_info_api_response", args: response } });
+    if (command === "searchTwitchCategories" && mockStreamerbot.searchDelay) window.setTimeout(emit, mockStreamerbot.searchDelay);
+    else queueMicrotask(emit);
   }
 }

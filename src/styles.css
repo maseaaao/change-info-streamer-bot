@@ -229,3 +229,13 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
  .mode-toggle { width: 100%; }
  .mode-toggle button { flex: 1; }
 }
+
+/* Category search: compact, keyboard-visible results and distinct states. */
+.category-option[aria-selected="true"] { background: var(--accent-soft); outline: 1px solid var(--accent); outline-offset: -1px; }
+.category-search-status { padding: 6px 9px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.category-search-status[role="alert"] { color: var(--danger); }
+.category-search-warning { padding: 6px 9px; color: var(--warning); background: #211C13; font-size: 12px; overflow-wrap: anywhere; }
+.autocomplete-list > .button { width: 100%; min-height: 36px; padding: 6px 9px; }
+.autocomplete-list > [aria-disabled="true"] { cursor: progress; opacity: .65; }
+.selected-category { display: flex; min-width: 0; gap: 8px; align-items: center; margin-bottom: 6px; }
+.selected-category > span:last-child { min-width: 0; overflow-wrap: anywhere; }

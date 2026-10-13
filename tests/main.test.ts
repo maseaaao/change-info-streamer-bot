@@ -56,6 +56,7 @@ describe("Stream Info HTML actions", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -65,6 +66,415 @@ describe("Stream Info HTML actions", () => {
     if (!input) throw new Error("Platform switch missing");
     input.click();
   }
+
+  it.each(["onConnect", "onDisconnect", "onError"] as const)("ignores retired client %s without disturbing a new pending search", async hook => {
+    await boot();
+    vi.useFakeTimers();
+    const old = mockStreamerbot.instances[0];
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    click("open-settings");
+    click("save-settings");
+    await vi.advanceTimersByTimeAsync(250);
+    mockStreamerbot.deferSearch = true;
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure new");
+    await vi.advanceTimersByTimeAsync(250);
+    old.options[hook]?.(new Error("old password error"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.connection-connected')).not.toBeNull();
+    mockStreamerbot.pendingSearches[0].reply({ data: { results: [{ id: "fresh", name: "Adventure new" }] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(action("choose-category").dataset.id).toBe("fresh");
+    expect(document.querySelector('.auth-panel')).toBeNull();
+  });
+
+  it.each(["before", "after"])("ignores retired getState completion %s replacement connection", async timing => {
+    await boot();
+    vi.useFakeTimers();
+    const old = mockStreamerbot.instances[0];
+    const original = old.doAction.bind(old);
+    let finish!: () => void;
+    vi.spyOn(old, "doAction").mockImplementationOnce(async (action, args) => {
+      await original(action, args);
+      await new Promise<void>(resolve => { finish = resolve; });
+    });
+    click("refresh-state");
+    await vi.advanceTimersByTimeAsync(0);
+    let disconnected!: () => void;
+    vi.spyOn(old, "disconnect").mockImplementationOnce(() => new Promise<void>(resolve => { disconnected = resolve; }));
+    mockStreamerbot.state = structuredClone(mockStreamerbot.state);
+    mockStreamerbot.state.twitch.accountName = "Replacement account";
+    click("open-settings");
+    click("save-settings");
+    if (timing === "before") {
+      finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('.connection-connecting')).not.toBeNull();
+      expect(document.querySelector('.notice')).toBeNull();
+      expect(document.querySelector('.autocomplete-list')).toBeNull();
+    }
+    disconnected();
+    await vi.advanceTimersByTimeAsync(0);
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('[data-platform="twitch"]')?.textContent).toContain("Replacement account");
+    expect(action("choose-category").dataset.id).toBe("493057");
+    expect(document.querySelector('.notice')).toBeNull();
+  });
+
+  it("invalidates callbacks before awaiting old disconnect", async () => {
+    await boot();
+    vi.useFakeTimers();
+    const old = mockStreamerbot.instances[0];
+    let finish!: () => void;
+    vi.spyOn(old, "disconnect").mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    click("open-settings");
+    click("save-settings");
+    old.options.onDisconnect?.();
+    old.options.onConnect?.();
+    old.options.onError?.(new Error("old password error"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.connection-connecting')).not.toBeNull();
+    expect(document.querySelector('.auth-panel')).toBeNull();
+    finish();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.connection-connected')).not.toBeNull();
+  });
+
+  it("renders a failed search envelope as retryable error, never empty", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { ok: false, error: { message: "Search unavailable" } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.querySelector('.category-search-status')?.textContent).toContain("Search unavailable");
+    expect(document.querySelector('.autocomplete-list')?.textContent).not.toContain("Ничего не найдено");
+    mockStreamerbot.searchReply = { ok: true, data: { results: [{ id: "adventure", name: "Adventure", imageUrl: "" }] } };
+    click("retry-category-search");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(action("choose-category").textContent).toContain("Adventure");
+    expect(JSON.parse(String(mockStreamerbot.actionCalls.at(-1)?.args.payloadJson))).toMatchObject({ query: "Adventure" });
+  });
+
+  it("serializes search requests and rejects stale ABA responses deterministically", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.deferSearch = true;
+    const selector = '[data-input="category-query"][data-kind="twitch"]';
+    setValue(selector, "Alpha");
+    await vi.advanceTimersByTimeAsync(250);
+    setValue(selector, "Beta");
+    await vi.advanceTimersByTimeAsync(250);
+    setValue(selector, "Alpha");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(mockStreamerbot.pendingSearches).toHaveLength(1);
+    mockStreamerbot.pendingSearches[0].reply({ data: { results: [{ id: "old", name: "Old Alpha" }] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('[data-id="old"]')).toBeNull();
+    expect(mockStreamerbot.pendingSearches).toHaveLength(2);
+    expect(mockStreamerbot.pendingSearches[1].payload).toEqual({ query: "Alpha" });
+    mockStreamerbot.pendingSearches[1].reply({ data: { results: [{ id: "new", name: "Alpha new" }] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(action("choose-category").dataset.id).toBe("new");
+  });
+
+  it("invalidates pending search on reconnect but retains the query draft", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.deferSearch = true;
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    mockStreamerbot.disconnectHook?.();
+    mockStreamerbot.pendingSearches[0].reply({ data: { results: [{ id: "stale", name: "Adventure stale" }] } });
+    click("open-settings");
+    click("save-settings");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.querySelector<HTMLInputElement>('[data-input="category-query"][data-kind="twitch"]')?.value).toBe("Adventure");
+    expect(document.querySelector('[data-id="stale"]')).toBeNull();
+    expect(mockStreamerbot.pendingSearches).toHaveLength(2);
+    mockStreamerbot.pendingSearches[1].reply({ data: { results: [{ id: "fresh", name: "Adventure fresh" }] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(action("choose-category").dataset.id).toBe("fresh");
+  });
+
+  it("retains category input identity, caret and composition through background refresh", async () => {
+    await boot();
+    vi.useFakeTimers();
+    const selector = '[data-input="category-query"][data-kind="twitch"]';
+    const input = document.querySelector<HTMLInputElement>(selector)!;
+    input.focus();
+    input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    setValue(selector, "冒険");
+    input.setSelectionRange(1, 1);
+    click("refresh-state");
+    await vi.advanceTimersByTimeAsync(500);
+    expect(document.querySelector(selector)).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(1);
+    expect(commands().filter(command => command === "searchTwitchCategories")).toHaveLength(0);
+    input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(commands().filter(command => command === "searchTwitchCategories")).toHaveLength(1);
+    click("refresh-state");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector(selector)).toBe(input);
+    expect(input.value).toBe("冒険");
+  });
+
+  it("preserves a focused category button by ID through refresh", async () => {
+    await boot();
+    vi.useFakeTimers();
+    setValue('[data-input="category-query"][data-kind="twitch"]', "PUBG");
+    await vi.advanceTimersByTimeAsync(250);
+    action("choose-category").focus();
+    click("refresh-state");
+    await vi.advanceTimersByTimeAsync(0);
+    expect((document.activeElement as HTMLElement).dataset.id).toBe("493057");
+  });
+
+  it("shows ranked batches of twenty and merges cursor pages beyond one hundred candidates", async () => {
+    await boot();
+    vi.useFakeTimers();
+    const results = Array.from({ length: 100 }, (_, index) => ({ id: `game-${index}`, name: `Adventure ${index}`, imageUrl: "" }));
+    mockStreamerbot.searchReply = { data: { results, cursor: "page-two", hasMore: true, partial: false } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.querySelectorAll('[data-action="choose-category"]')).toHaveLength(20);
+    for (let index = 0; index < 4; index++) click("more-categories");
+    expect(document.querySelectorAll('[data-action="choose-category"]')).toHaveLength(100);
+    mockStreamerbot.searchReply = { data: { results: [results[0], ...Array.from({ length: 30 }, (_, index) => ({ id: `next-${index}`, name: `Adventure next ${index}` }))], cursor: null, hasMore: false, partial: false } };
+    const list = document.querySelector<HTMLElement>('.autocomplete-list')!;
+    list.scrollTop = 77;
+    action("choose-category", 50).focus();
+    click("more-categories");
+    expect(document.querySelectorAll('[data-action="choose-category"]')).toHaveLength(100);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelectorAll('[data-action="choose-category"]')).toHaveLength(120);
+    expect(document.querySelector<HTMLElement>('.autocomplete-list')?.scrollTop).toBe(77);
+    expect((document.activeElement as HTMLElement).dataset.id).toBe("game-50");
+    expect(JSON.parse(String(mockStreamerbot.actionCalls.at(-1)?.args.payloadJson))).toEqual({ query: "Adventure", cursor: "page-two" });
+    click("more-categories");
+    expect(document.querySelectorAll('[data-action="choose-category"]')).toHaveLength(130);
+    expect(document.querySelector('[data-action="more-categories"]')).toBeNull();
+  });
+
+  it("shows partial warnings separately from errors and does not call a continuable page empty", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [], cursor: "continue", hasMore: true, partial: true, warnings: ["Some sources unavailable"] } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.querySelector('.category-search-warning')?.textContent).toContain("Some sources unavailable");
+    expect(document.querySelector('.autocomplete-list')?.textContent).not.toContain("Ничего не найдено");
+    expect(action("more-categories").disabled).toBe(false);
+    mockStreamerbot.searchReply = { ok: false, error: { message: "Page failed" } };
+    click("more-categories");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.category-search-status')?.textContent).toContain("Page failed");
+    mockStreamerbot.searchReply = { data: { results: [{ id: "found", name: "Adventure" }], cursor: null, hasMore: false, partial: false } };
+    click("retry-category-search");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(JSON.parse(String(mockStreamerbot.actionCalls.at(-1)?.args.payloadJson))).toEqual({ query: "Adventure", cursor: "continue" });
+    expect(action("choose-category").dataset.id).toBe("found");
+  });
+
+  it("supports accessible keyboard selection without guessing the first result", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "one", name: "Adventure one" }, { id: "two", name: "Adventure two" }] } };
+    const input = setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure") as HTMLInputElement;
+    input.focus();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(input.getAttribute("role")).toBe("combobox");
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(input.getAttribute("aria-controls")!)?.getAttribute("role")).toBe("listbox");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(input.value).toBe("Adventure");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    const active = input.getAttribute("aria-activedescendant");
+    expect(document.getElementById(active!)?.dataset.id).toBe("two");
+    click("refresh-state");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(input.getAttribute("aria-activedescendant")).toBe(active);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(input.value).toBe("");
+    expect(document.querySelector('[data-platform="twitch"] .selected-category')?.textContent).toContain("Adventure one");
+    expect(action("save-all").disabled).toBe(false);
+    setValue('[data-input="category-query"][data-kind="youtube"]', "В");
+    const youtube = document.querySelector<HTMLInputElement>('[data-input="category-query"][data-kind="youtube"]')!;
+    youtube.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(youtube.value).toBe("");
+    expect(youtube.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("scrolls the keyboard-active category into view after rendering", async () => {
+    await boot();
+    vi.useFakeTimers();
+    const scroll = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
+    try {
+      mockStreamerbot.searchReply = { data: { results: Array.from({ length: 20 }, (_, i) => ({ id: `item-${i}`, name: `Adventure ${i}` })) } };
+      const input = setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+      await vi.advanceTimersByTimeAsync(250);
+      for (let i = 0; i < 15; i++) input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+      expect(scroll.mock.contexts.at(-1)).toBe(document.getElementById(input.getAttribute("aria-activedescendant")!));
+      expect(document.activeElement).toBe(input);
+    } finally { delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView; }
+  });
+
+  it("transfers, traps and returns settings focus with an inert background", async () => {
+    await boot();
+    const opener = action("open-settings");
+    opener.focus();
+    click("open-settings");
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.querySelector("main")?.hasAttribute("inert")).toBe(true);
+    action("save-settings").focus();
+    action("save-settings").dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(document.activeElement).toBe(action("close-modal"));
+    action("close-modal").dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+    expect(document.activeElement).toBe(action("save-settings"));
+    action("save-settings").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(action("open-settings"));
+    expect(document.querySelector("main")?.hasAttribute("inert")).toBe(false);
+  });
+
+  it("preserves focus on a dialog action button during a background full render", async () => {
+    await boot();
+    click("open-settings");
+    const save = action("save-settings");
+    save.focus();
+    expect(document.activeElement).toBe(save);
+    click("refresh-state");
+    await flush();
+    expect(document.activeElement).toBe(action("save-settings"));
+  });
+
+  it("returns focus to category query input instead of BODY when choosing a category", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "pubg", name: "PUBG" }] } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "PUBG");
+    await vi.advanceTimersByTimeAsync(250);
+    click("choose-category");
+    expect(document.activeElement).toBe(document.querySelector('[data-input="category-query"][data-kind="twitch"]'));
+  });
+
+  it("retains load-more focus while fetching the next page", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "one", name: "Adventure one" }], cursor: "next", hasMore: true } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    mockStreamerbot.deferSearch = true;
+    action("more-categories").focus();
+    click("more-categories");
+    expect((document.activeElement as HTMLElement).dataset.action).toBe("more-categories");
+    mockStreamerbot.pendingSearches[0].reply({ data: { results: [{ id: "two", name: "Adventure two" }], cursor: "third", hasMore: true } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect((document.activeElement as HTMLElement).dataset.action).toBe("more-categories");
+  });
+
+  it("renders old results-only replies including a genuine empty result", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [] } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Puzzle");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.querySelector('.category-search-status')?.textContent).toContain("Ничего не найдено");
+    expect(document.querySelector('[data-action="retry-category-search"]')).toBeNull();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "puzzle", name: "Puzzle" }] } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Puzzles");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(action("choose-category").dataset.id).toBe("puzzle");
+    expect(document.querySelector('[data-action="more-categories"]')).toBeNull();
+  });
+
+  it("keeps candidates after a continuation failure and retries only that cursor", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "sim", name: "Simulator" }], cursor: "next", hasMore: true } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Simulator");
+    await vi.advanceTimersByTimeAsync(250);
+    mockStreamerbot.searchReply = { ok: false, error: { message: "Temporarily unavailable" } };
+    click("more-categories");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(action("choose-category").dataset.id).toBe("sim");
+    expect(document.querySelector('.category-search-status')?.textContent).toContain("Temporarily unavailable");
+    mockStreamerbot.searchReply = { data: { results: [{ id: "sim", name: "Simulator" }, { id: "sim2", name: "Simulator two" }], cursor: null, hasMore: false } };
+    click("retry-category-search");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelectorAll('[data-action="choose-category"]')).toHaveLength(2);
+    expect(JSON.parse(String(mockStreamerbot.actionCalls.at(-1)?.args.payloadJson))).toEqual({ query: "Simulator", cursor: "next" });
+  });
+
+  it("escapes category names and image attributes and falls back without inline handlers", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "safe", name: '<img src=x onerror="unsafe()">', imageUrl: 'https://example.invalid/cover" onerror="unsafe()' }] } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Safe");
+    await vi.advanceTimersByTimeAsync(250);
+    const option = action("choose-category");
+    expect(option.querySelectorAll("img")).toHaveLength(1);
+    expect(option.querySelector("[onerror]")).toBeNull();
+    expect(option.querySelector("strong")?.textContent).toBe('<img src=x onerror="unsafe()">');
+    option.querySelector("img")!.dispatchEvent(new Event("error"));
+    expect(option.querySelector(".category-image")?.classList.contains("failed")).toBe(true);
+  });
+
+  it.each([{ ok: false }, { ok: "false" }, { data: null }, { data: { results: "invalid" } }])("rejects malformed or failing search replies %j", async envelope => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = envelope;
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Puzzle");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(document.querySelector('[data-action="retry-category-search"]')).not.toBeNull();
+    expect(document.querySelector('[data-action="choose-category"]')).toBeNull();
+  });
+
+  it("retains earlier partial warnings after a successful continuation page", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchReply = { data: { results: [{ id: "one", name: "Adventure one" }], cursor: "next", hasMore: true, partial: true, warnings: ["One source unavailable"] } };
+    setValue('[data-input="category-query"][data-kind="twitch"]', "Adventure");
+    await vi.advanceTimersByTimeAsync(250);
+    mockStreamerbot.searchReply = { data: { results: [{ id: "two", name: "Adventure two" }], cursor: null, hasMore: false, partial: false } };
+    click("more-categories");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.category-search-warning')?.textContent).toContain("One source unavailable");
+  });
+
+  it.each(["twitch", "youtube"] as const)("requires explicit selection for unresolved %s text while retaining current category", async platform => {
+    await boot();
+    const selector = `[data-input="category-query"][data-kind="${platform}"]`;
+    setValue(selector, "Unresolved");
+    expect(document.querySelector(`[data-platform="${platform}"] .selected-category`)).not.toBeNull();
+    expect(action("save-all").disabled).toBe(true);
+    click("save-all");
+    expect(commands()).not.toContain("saveTemplates");
+    togglePlatform(platform);
+    expect(action("save-all").disabled).toBe(false);
+    togglePlatform(platform);
+    setValue(selector, "");
+    expect(action("save-all").disabled).toBe(false);
+  });
+
+  it("keeps search candidates and draft when closing settings", async () => {
+    await boot();
+    vi.useFakeTimers();
+    setValue('[data-input="category-query"][data-kind="twitch"]', "PUBG");
+    await vi.advanceTimersByTimeAsync(250);
+    click("open-settings");
+    click("close-modal");
+    expect(action("choose-category").textContent).toContain("PUBG");
+    expect(document.querySelector<HTMLInputElement>('[data-input="category-query"][data-kind="twitch"]')?.value).toBe("PUBG");
+  });
 
   it.each(["twitch", "youtube"] as const)("excludes disabled %s from subtitle validation and writes", async (platform) => {
     mockStreamerbot.state[platform].tags = [platform === "twitch" ? "invalid tag" : "x".repeat(501)];
@@ -202,6 +612,40 @@ describe("Stream Info HTML actions", () => {
     click("save-settings");
     await flush();
     expect(mockStreamerbot.connectCalls).toBeGreaterThan(1);
+  });
+
+  it("keeps Twitch results selectable when blur emits a duplicate change", async () => {
+    await boot();
+    vi.useFakeTimers();
+    const selector = '[data-input="category-query"][data-scope="all-twitch"]';
+    const fieldBefore = document.querySelector<HTMLInputElement>(selector)!;
+    setValue(selector, "PUBG");
+    expect(document.querySelector(selector)).toBe(fieldBefore);
+    await vi.advanceTimersByTimeAsync(350);
+    const option = action("choose-category");
+    const field = document.querySelector<HTMLInputElement>(selector)!;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(option.isConnected).toBe(true);
+    option.click();
+    expect(document.querySelector<HTMLInputElement>(selector)?.value).toBe("");
+    expect(document.querySelector('.selected-category')?.textContent).toContain("PUBG");
+  });
+
+  it("invalidates in-flight Twitch results when the query is cleared", async () => {
+    await boot();
+    vi.useFakeTimers();
+    mockStreamerbot.searchDelay = 200;
+    const selector = '[data-input="category-query"][data-scope="all-twitch"]';
+    setValue(selector, "PUBG");
+    await vi.advanceTimersByTimeAsync(320);
+    setValue(selector, "");
+    const clearedField = document.querySelector(selector);
+    await vi.advanceTimersByTimeAsync(220);
+    expect(document.querySelector(selector)).toBe(clearedField);
+    setValue(selector, "Rust");
+    expect(document.querySelector('[data-action="choose-category"]')).toBeNull();
+    expect(document.querySelector('.autocomplete-list')?.textContent).not.toContain("Ничего не найдено");
+    setValue(selector, "");
   });
 
   it("edits titles, categories and tags inline and applies them through mocks", async () => {

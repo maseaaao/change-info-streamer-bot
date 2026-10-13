@@ -8,6 +8,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="CategoryBackendTests.cs" />
+    <None Include="../fixtures/category-search.json" Link="category-search.json" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="../../streamerbot/category-search-transport.cs" Link="CategorySearchTransport.cs" />
+    <Compile Include="../../streamerbot/category-search-service.cs" Link="CategorySearchService.cs" />
+    <Compile Include="../../streamerbot/category-search-policy.cs" Link="CategorySearchPolicy.cs" />
     <Compile Include="../../streamerbot/state-cache-policy.cs" Link="StateCachePolicy.cs" />
     <Compile Include="../../streamerbot/automatic-youtube-policy.cs" Link="AutomaticYouTubePolicy.cs" />
   </ItemGroup>

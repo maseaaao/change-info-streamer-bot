@@ -73,6 +73,8 @@ try {
     apiVersion: response.apiVersion,
     responseOk: response.ok,
     twitchConnected: response.data.twitch?.connected === true,
+    twitchLive: response.data.twitch?.live === true,
+    youtubeLive: response.data.youtube?.live === true,
     youtubeConnected: response.data.youtube?.connected === true,
     templatesPresent: typeof response.data.templates?.twitchTemplate === "string",
   }, null, 2));

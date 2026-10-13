@@ -2,6 +2,14 @@
 
 [Русская версия](#история-изменений)
 
+## 1.3.2 — 2026-10-14
+
+- Overhaul Twitch category search: merge exact lookup and full-text autocomplete instead of truncating at lookup match.
+- Add shared relevance ranking across C# and TypeScript handling punctuation, whitespace, diacritics, and numeric titles.
+- Support pagination with load-more batches, single-flight request deduplication, and a bounded 30-second query cache.
+- Improve search UX: keyboard navigation (ArrowUp/ArrowDown/Enter/Escape), caret/IME preservation, error/retry states, and selection protection.
+- Enforce a 10-second request budget with HTTP cancellation across Twitch API operations.
+
 ## 1.3.1 — 2026-10-12
 
 - Refresh the standalone Dock with the Cyber-Monolith theme, embedded local fonts and 44 px controls.
@@ -47,6 +55,14 @@
 ## История изменений
 
 [English version](#changelog)
+
+### 1.3.2 — 2026-10-14
+
+- Переработан поиск категорий Twitch: точный поиск и подсказки объединяются без скрытия альтернативных вариантов.
+- Единое ранжирование в C# и TypeScript с учётом пунктуации, пробелов, диакритики и числовых названий.
+- Поддержка постраничной догрузки («Ещё»), дедупликация параллельных запросов и ограниченный 30-секундный кеш.
+- Улучшения интерфейса: клавиатурная навигация (стрелки, Enter, Escape), сохранение фокуса и IME, состояния ошибки и повтора, видимый выбор категории.
+- Общий 10-секундный сетевой бюджет с отменой HTTP-запросов.
 
 ### 1.3.1 — 2026-10-12
 

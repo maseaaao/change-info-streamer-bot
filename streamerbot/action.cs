@@ -13,6 +13,8 @@ public class CPHInline
     private const int ApiVersion = 3;
     private static readonly ShortLivedCache<JObject> StateCache =
         new ShortLivedCache<JObject>(TimeSpan.FromSeconds(5));
+    private static readonly TwitchCategorySearchService CategorySearch = new TwitchCategorySearchService();
+    private static readonly HttpClient CategoryHttpClient = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
     private static readonly HttpClient TwitchHttpClient = new HttpClient
     {
         Timeout = TimeSpan.FromSeconds(10)
@@ -63,7 +65,7 @@ public class CPHInline
                     data = GetState();
                     break;
                 case "searchTwitchCategories":
-                    data = SearchTwitchCategories(payload.Value<string>("query"));
+                    data = SearchTwitchCategories(payload.Value<string>("query"), payload.Value<string>("cursor"));
                     break;
                 case "updateTwitch":
                     data = UpdateTwitch(payload);
@@ -377,25 +379,38 @@ public class CPHInline
         }
     }
 
-    private JObject SearchTwitchCategories(string query)
+    private JObject SearchTwitchCategories(string query, string cursor)
     {
-        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)
-            return new JObject { ["ok"] = true, ["results"] = new JArray() };
-
-        JObject response = TwitchGet("search/categories?first=20&query=" + Uri.EscapeDataString(query.Trim()));
-        JArray results = new JArray();
-        foreach (JToken item in (response["data"] as JArray ?? new JArray()))
+        // Capture credentials once: all sources and the cache key belong to the
+        // same connected account, even if Streamer.bot reconnects mid-request.
+        string token = CPH.TwitchOAuthToken;
+        string clientId = CPH.TwitchClientId;
+        Ensure(!string.IsNullOrWhiteSpace(token) && !string.IsNullOrWhiteSpace(clientId), "Twitch OAuth не подключён в Streamer.bot.");
+        string scope = TwitchCategorySearchService.Fingerprint(clientId + "\n" + token);
+        TwitchCategoryPage page = CategorySearch.SearchAsync(query, cursor, scope, async (path, cancellation) =>
         {
-            string imageUrl = item.Value<string>("box_art_url") ?? "";
-            results.Add(new JObject
-            {
-                ["id"] = item.Value<string>("id") ?? "",
-                ["name"] = item.Value<string>("name") ?? "",
-                ["imageUrl"] = NormalizeBoxArt(imageUrl)
-            });
-        }
-
-        return new JObject { ["ok"] = true, ["results"] = results };
+            string content = await TwitchCategoryTransport.GetAsync(CategoryHttpClient, path, token, clientId, cancellation).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();
+            JObject response = JObject.Parse(content);
+            JArray data = response["data"] as JArray;
+            if (data == null) throw new InvalidOperationException("Twitch category response has no data array.");
+            return new TwitchCategoryPage {
+                Results = data.Select(item => new TwitchCategoryMatch(item.Value<string>("id") ?? "",
+                    item.Value<string>("name") ?? "", NormalizeBoxArt(item.Value<string>("box_art_url") ?? ""))).ToList(),
+                Cursor = response["pagination"] == null ? null : response["pagination"].Value<string>("cursor")
+            };
+        }).GetAwaiter().GetResult();
+        JArray results = new JArray(page.Results.Select(item => new JObject
+        {
+            ["id"] = item.Id,
+            ["name"] = item.Name,
+            ["imageUrl"] = item.ImageUrl
+        }));
+        var result = new JObject { ["ok"] = true, ["results"] = results,
+            ["cursor"] = page.Cursor == null ? JValue.CreateNull() : new JValue(page.Cursor),
+            ["hasMore"] = page.HasMore, ["partial"] = page.Partial };
+        if (page.Warnings.Count > 0) result["warnings"] = new JArray(page.Warnings);
+        return result;
     }
 
     private JObject UpdateTwitch(JObject payload)

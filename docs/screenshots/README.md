@@ -4,9 +4,9 @@ The images in this directory are captured from the built-in `?demo=1` mode. They
 
 Снимки в этой папке сделаны во встроенном режиме `?demo=1`. В них используются только примерные данные; подключения к Streamer.bot и стриминговым аккаунтам нет.
 
-Captured on October 14, 2026 from the freshly built **1.3.2** HTML files at a **1200 × 1080** browser viewport. Main-page editors replace the old stream-edit modal.
+Captured on October 17, 2026 from the freshly built **1.3.2** HTML files at a **1200 × 1080** browser viewport. Main-page editors replace the old stream-edit modal.
 
-Обновлено 14.10.2026 по свежей сборке **1.3.2**, размер окна браузера — **1200 × 1080**. Редакторы находятся на главной странице; старый снимок модального редактора удалён.
+Обновлено 17.10.2026 по свежей сборке **1.3.2**, размер окна браузера — **1200 × 1080**. Редакторы находятся на главной странице; старый снимок модального редактора удалён.
 
 | File / Файл | View / Экран |
 | --- | --- |

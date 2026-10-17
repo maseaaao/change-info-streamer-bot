@@ -6,7 +6,7 @@ One self-contained HTML control surface for updating Twitch and YouTube stream m
 
 ![English dashboard showcase](docs/screenshots/dashboard-en.png)
 
-Version 1.3.2 interface; screenshots refreshed on October 14, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
+Version 1.3.2 interface; screenshots refreshed on October 17, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
 
 ## What it does
 

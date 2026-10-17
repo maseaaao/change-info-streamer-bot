@@ -515,9 +515,9 @@ function subtitlePanel(): string {
   const form = state.allForm;
   const errors = form ? validateAll(form) : [];
   return `<section class="subtitle-panel" aria-labelledby="subtitle-title">
-    <div class="panel-heading"><h2 id="subtitle-title">${t("subtitle")}</h2><span class="template-store">Streamer.bot</span></div>
+    <div class="panel-heading"><h2 id="subtitle-title">${t("subtitle")}</h2></div>
     <div class="subtitle-grid">
-      <label class="subtitle-field">${t("subtitle")}<input data-input="main-subtitle" value="${escapeHtml(form?.subtitle ?? state.templateDraft.subtitle)}" placeholder="${escapeHtml(t("subtitleExample"))}"${editorBusy() ? " disabled" : ""} /></label>
+      <label class="subtitle-field"><span class="sr-only">${t("subtitle")}</span><input data-input="main-subtitle" value="${escapeHtml(form?.subtitle ?? state.templateDraft.subtitle)}" placeholder="${escapeHtml(t("subtitleExample"))}"${editorBusy() ? " disabled" : ""} /></label>
       ${platformSwitch("twitch", "subtitle-twitch")}${platformSwitch("youtube", "subtitle-youtube")}
       <div class="subtitle-actions">${button(state.allSaving ? t("saving") : t("apply"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
     </div>
@@ -532,7 +532,7 @@ function templatePanel(): string {
   const twitchTitle = titleFromTemplate(draft.twitchTemplate, subtitle);
   const youtubeTitle = titleFromTemplate(draft.youtubeTemplate, subtitle);
   return `<section class="template-panel settings-template-panel" aria-labelledby="templates-title">
-    <div class="panel-heading"><h2 id="templates-title">${t("templates")}</h2><span class="template-store">Streamer.bot</span></div>
+    <div class="panel-heading"><h2 id="templates-title">${t("templates")}</h2></div>
     <div class="template-grid">
       ${syntaxEditor(t("twitchTemplate"), "settings-twitch-template", draft.twitchTemplate)}
       ${syntaxEditor(t("youtubeTemplate"), "settings-youtube-template", draft.youtubeTemplate)}

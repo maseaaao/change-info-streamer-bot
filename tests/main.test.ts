@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockStreamerbot } from "./mocks/streamerbot-client";
 import packageJson from "../package.json";
@@ -426,6 +428,14 @@ describe("Stream Info HTML actions", () => {
     expect(option.querySelector("strong")?.textContent).toBe('<img src=x onerror="unsafe()">');
     option.querySelector("img")!.dispatchEvent(new Event("error"));
     expect(option.querySelector(".category-image")?.classList.contains("failed")).toBe(true);
+    const sheet = document.createElement("style");
+    sheet.textContent = readFileSync(resolve("src/styles.css"), "utf8");
+    document.head.append(sheet);
+    expect(getComputedStyle(option.querySelector("img")!).display).toBe("none");
+    expect(getComputedStyle(option.querySelector(".category-fallback")!).display).not.toBe("none");
+    sheet.remove();
+    click("choose-category");
+    expect(document.querySelector('.selected-category')?.textContent).toContain('<img src=x onerror="unsafe()">');
   });
 
   it.each([{ ok: false }, { ok: "false" }, { data: null }, { data: { results: "invalid" } }])("rejects malformed or failing search replies %j", async envelope => {
@@ -576,6 +586,92 @@ describe("Stream Info HTML actions", () => {
     click("open-settings");
     click("close-modal");
     expect(document.querySelector<HTMLInputElement>('[data-input="inline-title"][data-kind="twitch"]')?.value).toBe("Inline Twitch title");
+  });
+
+  it.each([
+    ["ru", "Сохранить подключение", "Есть несохранённые изменения шаблонов"],
+    ["en", "Save connection", "Unsaved template changes"],
+    ["es", "Guardar conexión", "Cambios de plantillas sin guardar"],
+    ["zh", "保存连接", "模板更改尚未保存"],
+  ])("identifies connection saving and unsaved templates in %s", async (language, label, dirty) => {
+    vi.stubGlobal("__STREAM_INFO_LOCALE__", language);
+    await boot();
+    click("open-settings");
+    expect(action("save-settings").textContent).toBe(label);
+    expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+    const original = mockStreamerbot.state.templates.twitchTemplate;
+    setValue('[data-input="settings-twitch-template"]', "Draft %subtitle%");
+    expect(document.querySelector(".template-dirty")?.textContent).toBe(dirty);
+    setValue('[data-input="settings-twitch-template"]', original);
+    expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+  });
+
+  it("saves connection independently while preserving unsaved templates", async () => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "Draft %subtitle%");
+    setValue('[data-input="settings-host"]', "localhost");
+    click("save-settings");
+    await flush();
+    expect(commands()).not.toContain("saveTemplates");
+    click("open-settings");
+    expect(document.querySelector<HTMLTextAreaElement>('[data-input="settings-twitch-template"]')?.value).toBe("Draft %subtitle%");
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    click("save-templates");
+    await flush();
+    expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+  });
+
+  it("saves templates independently and does not revert them when saving connection", async () => {
+    await boot();
+    const connections = mockStreamerbot.connectCalls;
+    click("open-settings");
+    setValue('[data-input="settings-host"]', "localhost");
+    setValue('[data-input="settings-twitch-template"]', "Saved %subtitle%");
+    click("save-templates");
+    await flush();
+    expect(mockStreamerbot.connectCalls).toBe(connections);
+    expect(document.querySelector(".modal")).not.toBeNull();
+    const persisted = () => JSON.parse(localStorage.getItem("change-info-streamer-bot.settings.v1")!);
+    expect(persisted().host).toBe("127.0.0.1");
+    expect(persisted().twitchTemplate).toBe("Saved %subtitle%");
+    click("save-settings");
+    expect(persisted().host).toBe("localhost");
+    expect(persisted().twitchTemplate).toBe("Saved %subtitle%");
+    await flush();
+  });
+
+  it.each(["Newer %subtitle%", "original"])("keeps newer template edit %s unsaved when an earlier save completes", async latestEdit => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "First %subtitle%");
+    const latest = latestEdit === "original" ? mockStreamerbot.state.templates.twitchTemplate : latestEdit;
+    const client = mockStreamerbot.instances[0];
+    const original = client.doAction.bind(client);
+    let finish!: () => void;
+    vi.spyOn(client, "doAction").mockImplementationOnce(async (action, args) => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      await original(action, args);
+    });
+    click("save-templates");
+    setValue('[data-input="settings-twitch-template"]', latest);
+    if (latestEdit === "original") expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+    finish();
+    await flush();
+    expect(document.querySelector<HTMLTextAreaElement>('[data-input="settings-twitch-template"]')?.value).toBe(latest);
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    expect(mockStreamerbot.state.templates.twitchTemplate).toBe("First %subtitle%");
+  });
+
+  it("retains the unsaved template status when saving fails", async () => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "Draft %subtitle%");
+    vi.spyOn(mockStreamerbot.instances[0], "doAction").mockRejectedValueOnce(new Error("Save rejected"));
+    click("save-templates");
+    await flush();
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    expect(document.querySelector(".notice")?.textContent).toContain("Save rejected");
   });
 
   it("runs refresh, links, preset, template and settings actions without real platform changes", async () => {

@@ -64,7 +64,7 @@ For a safe visual tour with sample data, append `?demo=1` to any built HTML file
 
 ## Connection and template settings
 
-The gear button opens Host, Port, Endpoint, and WebSocket password settings. **Save** saves connection settings. Templates have a separate **Save templates** button: check the previews and length counters first. **Reset** fills the editors with default templates; save them to persist the reset. Closing Settings preserves unsaved main-page edits.
+The gear button opens Host, Port, Endpoint, and WebSocket password settings. **Save connection** saves connection settings. Templates have a separate **Save templates** button: check the previews and length counters first. **Reset** fills the editors with default templates; save them to persist the reset. Closing Settings preserves unsaved main-page edits.
 
 ![Connection and template settings](docs/screenshots/settings-en.png)
 

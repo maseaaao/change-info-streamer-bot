@@ -539,6 +539,7 @@ function templatePanel(): string {
     </div>
     <div class="template-preview-grid"><div class="template-preview"><span>Twitch</span><strong>${renderTemplateValue(draft.twitchTemplate, subtitle)}</strong>${titleCounter(twitchTitle, 140)}</div><div class="template-preview"><span>YouTube</span><strong>${renderTemplateValue(draft.youtubeTemplate, subtitle)}</strong>${titleCounter(youtubeTitle, 100)}</div></div>
     ${valid ? "" : `<p class="form-errors">${t("templateValidation")}</p>`}
+    <p class="template-dirty" role="status">${state.templatesDirty ? t("templatesUnsaved") : ""}</p>
     <div class="template-actions">${button(t("reset"), "reset-templates", { icon: uiIcon("refresh") })}${button(state.templatesSaving ? t("saving") : t("saveTemplates"), "save-templates", { className: "button primary", icon: uiIcon("braces"), disabled: !valid || state.templatesSaving })}</div>
   </section>`;
 }
@@ -580,7 +581,7 @@ function settingsModal(): string {
   return `<div class="modal-backdrop"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-header"><div><span class="eyebrow">${t("connection")}</span><h2 id="settings-title">${t("settings")}</h2></div>${iconButton("close-modal", t("close"), renderIcon("close"))}</div>
     <div class="modal-body"><section class="settings-section"><h3>${t("connectionToStreamerbot")}</h3><div class="settings-grid"><label>Host<input data-input="settings-host" value="${escapeHtml(draft.host)}" /></label><label>Port<input data-input="settings-port" type="number" min="1" max="65535" value="${escapeHtml(draft.port)}" /></label></div><label>Endpoint<input data-input="settings-endpoint" value="${escapeHtml(draft.endpoint)}" /></label><label>${t("password")}<input data-input="settings-password" type="password" value="${escapeHtml(draft.password)}" autocomplete="current-password" /></label><label class="check-row"><input data-input="settings-remember" type="checkbox"${draft.rememberPassword ? " checked" : ""} />${t("rememberPassword")}</label></section>${templatePanel()}</div>
-    <div class="modal-footer">${button(t("save"), "save-settings", { className: "button primary" })}</div>
+    <div class="modal-footer">${button(t("saveConnection"), "save-settings", { className: "button primary" })}</div>
   </section></div>`;
 }
 
@@ -693,12 +694,17 @@ function normalizeTemplates(value: unknown): TemplateState {
   };
 }
 
-function syncTemplates(templates: TemplateState): void {
+function updateTemplatesDirty(): void {
+  state.templatesDirty = state.templateDraft.twitchTemplate !== settings.twitchTemplate || state.templateDraft.youtubeTemplate !== settings.youtubeTemplate;
+}
+
+function syncTemplates(templates: TemplateState, preserveDraft = false): void {
   const hasLocalCustomTemplate = settings.twitchTemplate !== DEFAULT_TWITCH_TEMPLATE || settings.youtubeTemplate !== DEFAULT_YOUTUBE_TEMPLATE || Boolean(settings.lastSubtitle);
   if (!templates.configured && hasLocalCustomTemplate) return;
   settings = { ...settings, twitchTemplate: templates.twitchTemplate, youtubeTemplate: templates.youtubeTemplate, lastSubtitle: templates.subtitle };
   saveSettings();
-  if (!state.templatesDirty && !state.subtitleDirty) state.templateDraft = { twitchTemplate: templates.twitchTemplate, youtubeTemplate: templates.youtubeTemplate, subtitle: templates.subtitle };
+  if (!preserveDraft && !state.templatesDirty && !state.subtitleDirty) state.templateDraft = { twitchTemplate: templates.twitchTemplate, youtubeTemplate: templates.youtubeTemplate, subtitle: templates.subtitle };
+  updateTemplatesDirty();
 }
 
 function handleCodeEvent(payload: unknown): void {
@@ -841,7 +847,7 @@ async function callAction(command: string, payload: Record<string, unknown> = {}
 }
 
 async function saveTemplates(): Promise<void> {
-  const draft = state.templateDraft;
+  const draft = { ...state.templateDraft };
   if (!isTemplateValid(draft.twitchTemplate) || !isTemplateValid(draft.youtubeTemplate)) return;
   state.templatesSaving = true;
   render();
@@ -849,8 +855,8 @@ async function saveTemplates(): Promise<void> {
     const response = await callAction("saveTemplates", { twitchTemplate: draft.twitchTemplate, youtubeTemplate: draft.youtubeTemplate, subtitle: settings.lastSubtitle });
     if (!response.ok || !response.data) throw new Error(response.error?.message ?? t("templateStateSaveFailed"));
     const templates = normalizeTemplates(response.data.templates);
-    syncTemplates({ ...templates, configured: true });
-    state.templatesDirty = false;
+    const editedWhileSaving = state.templateDraft.twitchTemplate !== draft.twitchTemplate || state.templateDraft.youtubeTemplate !== draft.youtubeTemplate;
+    syncTemplates({ ...templates, configured: true }, editedWhileSaving);
     notify(t("templateSaved"), [t("templateSavedDescription")]);
   } catch (error) {
     notify(t("templateSaveFailed"), [error instanceof Error ? error.message : t("unknownError")]);
@@ -1193,8 +1199,8 @@ function updateInput(target: HTMLInputElement | HTMLTextAreaElement): void {
     case "settings-endpoint": state.settingsDraft.endpoint = target.value.trim() || "/"; break;
     case "settings-password": state.settingsDraft.password = target.value; break;
     case "settings-remember": if (target instanceof HTMLInputElement) state.settingsDraft.rememberPassword = target.checked; break;
-    case "settings-twitch-template": state.templateDraft.twitchTemplate = target.value; state.templatesDirty = true; break;
-    case "settings-youtube-template": state.templateDraft.youtubeTemplate = target.value; state.templatesDirty = true; break;
+    case "settings-twitch-template": state.templateDraft.twitchTemplate = target.value; updateTemplatesDirty(); break;
+    case "settings-youtube-template": state.templateDraft.youtubeTemplate = target.value; updateTemplatesDirty(); break;
     case "main-subtitle":
       state.templateDraft.subtitle = target.value; state.subtitleDirty = true;
       if (state.allForm) {
@@ -1363,10 +1369,17 @@ app.addEventListener("click", (event) => {
       break;
     case "save-all": void saveAll(); break;
     case "save-templates": void saveTemplates(); break;
-    case "reset-templates": state.templateDraft = { twitchTemplate: DEFAULT_TWITCH_TEMPLATE, youtubeTemplate: DEFAULT_YOUTUBE_TEMPLATE, subtitle: state.templateDraft.subtitle }; state.templatesDirty = true; render(); break;
+    case "reset-templates": state.templateDraft = { twitchTemplate: DEFAULT_TWITCH_TEMPLATE, youtubeTemplate: DEFAULT_YOUTUBE_TEMPLATE, subtitle: state.templateDraft.subtitle }; updateTemplatesDirty(); render(); break;
     case "run-preset": void runPreset(target.dataset.presetId ?? "", target.dataset.presetName ?? t("presetDefault")); break;
     case "save-settings": {
-      settings = { ...state.settingsDraft, endpoint: state.settingsDraft.endpoint || "/", port: Math.max(1, Math.min(65535, Number(state.settingsDraft.port) || 8080)) };
+      settings = {
+        ...settings,
+        host: state.settingsDraft.host,
+        password: state.settingsDraft.password,
+        rememberPassword: state.settingsDraft.rememberPassword,
+        endpoint: state.settingsDraft.endpoint || "/",
+        port: Math.max(1, Math.min(65535, Number(state.settingsDraft.port) || 8080)),
+      };
       // Connection settings do not discard unsaved stream metadata drafts.
       saveSettings(); clearModal(); void connect(); break;
     }

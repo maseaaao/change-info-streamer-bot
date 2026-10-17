@@ -49,6 +49,7 @@ describe("Stream Info HTML actions", () => {
     vi.resetModules();
     mockStreamerbot.reset();
     localStorage.clear();
+    sessionStorage.clear();
     window.history.replaceState({}, "", "/");
     document.body.innerHTML = '<div id="app"></div>';
     vi.stubGlobal("open", open);
@@ -620,6 +621,24 @@ describe("Stream Info HTML actions", () => {
     click("save-templates");
     await flush();
     expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+  });
+
+  it("recovers unsaved template edits from this browser tab after reload", async () => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "Recovered %subtitle%");
+    click("close-modal");
+    expect(sessionStorage.getItem("change-info-streamer-bot.template-draft.v1")).toContain("Recovered %subtitle%");
+
+    vi.resetModules();
+    document.body.innerHTML = '<div id="app"></div>';
+    await boot();
+    click("open-settings");
+    expect(document.querySelector<HTMLTextAreaElement>('[data-input="settings-twitch-template"]')?.value).toBe("Recovered %subtitle%");
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    click("save-templates");
+    await flush();
+    expect(sessionStorage.getItem("change-info-streamer-bot.template-draft.v1")).toBeNull();
   });
 
   it("saves templates independently and does not revert them when saving connection", async () => {

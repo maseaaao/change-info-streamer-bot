@@ -27,6 +27,7 @@ const ACTION_GROUP = "STREAM INFO";
 const ACTION_NAME = "STREAM INFO | API";
 const CODE_EVENT = "stream_info_api_response";
 const STORAGE_KEY = "change-info-streamer-bot.settings.v1";
+const TEMPLATE_DRAFT_KEY = "change-info-streamer-bot.template-draft.v1";
 const REQUEST_TIMEOUT = 15_000;
 const DEMO_MODE = new URLSearchParams(window.location.search).has("demo");
 
@@ -109,7 +110,19 @@ function loadSettings(): ConnectionSettings {
   }
 }
 
+function restoreTemplateDraft(): Pick<TemplateDraft, "twitchTemplate" | "youtubeTemplate"> | null {
+  try {
+    const draft: unknown = JSON.parse(sessionStorage.getItem(TEMPLATE_DRAFT_KEY) ?? "null");
+    if (typeof draft !== "object" || draft === null || !("twitchTemplate" in draft) || !("youtubeTemplate" in draft)) return null;
+    if (typeof draft.twitchTemplate !== "string" || typeof draft.youtubeTemplate !== "string") return null;
+    return { twitchTemplate: draft.twitchTemplate, youtubeTemplate: draft.youtubeTemplate };
+  } catch {
+    return null;
+  }
+}
+
 let settings = loadSettings();
+const recoveredDraft = restoreTemplateDraft();
 const state: AppState = {
   connection: "connecting",
   connectionError: null,
@@ -120,14 +133,14 @@ const state: AppState = {
   modal: null,
   settingsDraft: { ...settings },
   templateDraft: {
-    twitchTemplate: settings.twitchTemplate,
-    youtubeTemplate: settings.youtubeTemplate,
+    twitchTemplate: recoveredDraft?.twitchTemplate ?? settings.twitchTemplate,
+    youtubeTemplate: recoveredDraft?.youtubeTemplate ?? settings.youtubeTemplate,
     subtitle: settings.lastSubtitle,
   },
   presetActions: [],
   runningPresetId: null,
   templatesSaving: false,
-  templatesDirty: false,
+  templatesDirty: recoveredDraft !== null && (recoveredDraft.twitchTemplate !== settings.twitchTemplate || recoveredDraft.youtubeTemplate !== settings.youtubeTemplate),
   allSaving: false,
   subtitleDirty: false,
   allDirty: false,
@@ -696,6 +709,18 @@ function normalizeTemplates(value: unknown): TemplateState {
 
 function updateTemplatesDirty(): void {
   state.templatesDirty = state.templateDraft.twitchTemplate !== settings.twitchTemplate || state.templateDraft.youtubeTemplate !== settings.youtubeTemplate;
+  try {
+    if (state.templatesDirty) {
+      sessionStorage.setItem(TEMPLATE_DRAFT_KEY, JSON.stringify({
+        twitchTemplate: state.templateDraft.twitchTemplate,
+        youtubeTemplate: state.templateDraft.youtubeTemplate,
+      }));
+    } else {
+      sessionStorage.removeItem(TEMPLATE_DRAFT_KEY);
+    }
+  } catch {
+    // Storage may be disabled in an embedded browser; keep the in-memory draft.
+  }
 }
 
 function syncTemplates(templates: TemplateState, preserveDraft = false): void {

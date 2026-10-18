@@ -851,6 +851,24 @@ describe("Stream Info HTML actions", () => {
     expect(warning?.querySelector(".icon-warning")).not.toBeNull();
   });
 
+  it("shows a selected category once and invites a new search without exposing IDs", async () => {
+    await boot();
+    for (const platform of ["twitch", "youtube"]) {
+      const card = document.querySelector(`[data-platform="${platform}"]`)!;
+      const selected = card.querySelector(".selected-category")!;
+      const search = card.querySelector<HTMLInputElement>('[data-input="category-query"]')!;
+      expect(selected.textContent).not.toContain("ID");
+      expect(search.placeholder).toBe("Найти другую категорию");
+      expect(search.value).toBe("");
+      expect(search.placeholder).not.toContain(selected.textContent!);
+    }
+    setValue('[data-input="category-query"][data-kind="youtube"]', "20");
+    expect(action("choose-category").dataset.id).toBe("20");
+    expect(action("choose-category").textContent).not.toContain("ID:");
+    click("choose-category");
+    expect(document.querySelector('[data-platform="youtube"] .selected-category')?.textContent).toContain("Видеоигры");
+  });
+
   it("edits titles, categories and tags inline and applies them through mocks", async () => {
     await boot();
     setValue('[data-input="tag-draft"][data-scope="all-twitch"]', "Rust");

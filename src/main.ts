@@ -428,7 +428,7 @@ function categoryOptionId(platform: Platform, id: string): string {
 
 function renderCategoryOption(category: TwitchCategory | YouTubeCategory, kind: Platform, scope: string): string {
   const visual = kind === "twitch" ? categoryImage((category as TwitchCategory).imageUrl) : `<span class="category-image youtube-category-icon">${(category as YouTubeCategory).iconSvg}</span>`;
-  return `<button type="button" class="category-option" id="${escapeHtml(categoryOptionId(kind, category.id))}" role="option" aria-selected="${activeCategory[kind] === category.id}" data-action="choose-category" data-kind="${kind}" data-scope="${scope}" data-id="${escapeHtml(category.id)}">${visual}<span><strong>${escapeHtml(category.name)}</strong><small>ID: ${escapeHtml(category.id)}</small></span></button>`;
+  return `<button type="button" class="category-option" id="${escapeHtml(categoryOptionId(kind, category.id))}" role="option" aria-selected="${activeCategory[kind] === category.id}" data-action="choose-category" data-kind="${kind}" data-scope="${scope}" data-id="${escapeHtml(category.id)}">${visual}<span><strong>${escapeHtml(category.name)}</strong></span></button>`;
 }
 
 function renderTagInput(tags: string[], draft: string, scope: string, disabled: boolean): string {
@@ -439,7 +439,7 @@ function categoryControl(platform: Platform, selected: TwitchCategory | YouTubeC
   const ranked = platform === "twitch" ? rankCategories(state.twitchResults, query) : YOUTUBE_CATEGORIES.filter(item => `${item.name} ${item.id}`.toLocaleLowerCase(localeTag[locale]).includes(query.toLocaleLowerCase(localeTag[locale])));
   const results = ranked.slice(0, platform === "twitch" ? visibleCategories : 20);
   const visible = query.trim().length >= (platform === "twitch" ? 2 : 1);
-  const current = selected ? `${selected.name} · ID ${selected.id}` : "";
+  const current = selected?.name ?? "";
   const visual = selected ? (platform === "twitch" ? categoryImage((selected as TwitchCategory).imageUrl) : `<span class="category-image youtube-category-icon">${(selected as YouTubeCategory).iconSvg}</span>`) : "";
   const loading = platform === "twitch" && twitchSearching;
   const error = platform === "twitch" ? searchError : null;
@@ -449,7 +449,7 @@ function categoryControl(platform: Platform, selected: TwitchCategory | YouTubeC
   if (activeCategory[platform] && !results.some(item => item.id === activeCategory[platform])) activeCategory[platform] = null;
   const active = activeCategory[platform];
   const list = `${results.map(item => renderCategoryOption(item, platform, scope)).join("")}<div class="category-search-status" role="${error ? "alert" : "status"}" aria-live="polite">${escapeHtml(status)}</div>${warning}${error ? button(t("categoryRetry"), "retry-category-search") : ""}${more ? button(t("categoryMore"), "more-categories", { data: `aria-disabled="${loading}"` }) : ""}`;
-  return `<div class="autocomplete">${selected ? `<div class="selected-category">${visual}<span>${escapeHtml(current)}</span></div>` : ""}<label>${t("category")}<input data-input="category-query" data-kind="${platform}" data-scope="${scope}" value="${escapeHtml(query)}" placeholder="${escapeHtml(current || t("categorySearch"))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${visible && !disabled}" aria-controls="category-list-${platform}"${active ? ` aria-activedescendant="${escapeHtml(categoryOptionId(platform, active))}"` : ""}${disabled ? " disabled" : ""} /></label>${visible && !disabled ? `<div class="autocomplete-list" id="category-list-${platform}" role="listbox" aria-label="${escapeHtml(t("category"))}">${list}</div>` : ""}</div>`;
+  return `<div class="autocomplete">${selected ? `<div class="selected-category">${visual}<span>${escapeHtml(current)}</span></div>` : ""}<label>${t("category")}<input data-input="category-query" data-kind="${platform}" data-scope="${scope}" value="${escapeHtml(query)}" placeholder="${escapeHtml(t(selected ? "categorySearchOther" : "categorySearch"))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${visible && !disabled}" aria-controls="category-list-${platform}"${active ? ` aria-activedescendant="${escapeHtml(categoryOptionId(platform, active))}"` : ""}${disabled ? " disabled" : ""} /></label>${visible && !disabled ? `<div class="autocomplete-list" id="category-list-${platform}" role="listbox" aria-label="${escapeHtml(t("category"))}">${list}</div>` : ""}</div>`;
 }
 
 // Search updates only its suggestions; retain the actual input, caret and IME.

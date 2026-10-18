@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockStreamerbot } from "./mocks/streamerbot-client";
 import packageJson from "../package.json";
@@ -47,6 +49,8 @@ describe("Stream Info HTML actions", () => {
     vi.resetModules();
     mockStreamerbot.reset();
     localStorage.clear();
+    delete document.documentElement.dataset.theme;
+    sessionStorage.clear();
     window.history.replaceState({}, "", "/");
     document.body.innerHTML = '<div id="app"></div>';
     vi.stubGlobal("open", open);
@@ -426,6 +430,14 @@ describe("Stream Info HTML actions", () => {
     expect(option.querySelector("strong")?.textContent).toBe('<img src=x onerror="unsafe()">');
     option.querySelector("img")!.dispatchEvent(new Event("error"));
     expect(option.querySelector(".category-image")?.classList.contains("failed")).toBe(true);
+    const sheet = document.createElement("style");
+    sheet.textContent = readFileSync(resolve("src/styles.css"), "utf8");
+    document.head.append(sheet);
+    expect(getComputedStyle(option.querySelector("img")!).display).toBe("none");
+    expect(getComputedStyle(option.querySelector(".category-fallback")!).display).not.toBe("none");
+    sheet.remove();
+    click("choose-category");
+    expect(document.querySelector('.selected-category')?.textContent).toContain('<img src=x onerror="unsafe()">');
   });
 
   it.each([{ ok: false }, { ok: "false" }, { data: null }, { data: { results: "invalid" } }])("rejects malformed or failing search replies %j", async envelope => {
@@ -578,6 +590,110 @@ describe("Stream Info HTML actions", () => {
     expect(document.querySelector<HTMLInputElement>('[data-input="inline-title"][data-kind="twitch"]')?.value).toBe("Inline Twitch title");
   });
 
+  it.each([
+    ["ru", "Сохранить подключение", "Есть несохранённые изменения шаблонов"],
+    ["en", "Save connection", "Unsaved template changes"],
+    ["es", "Guardar conexión", "Cambios de plantillas sin guardar"],
+    ["zh", "保存连接", "模板更改尚未保存"],
+  ])("identifies connection saving and unsaved templates in %s", async (language, label, dirty) => {
+    vi.stubGlobal("__STREAM_INFO_LOCALE__", language);
+    await boot();
+    click("open-settings");
+    expect(action("save-settings").textContent).toBe(label);
+    expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+    const original = mockStreamerbot.state.templates.twitchTemplate;
+    setValue('[data-input="settings-twitch-template"]', "Draft %subtitle%");
+    expect(document.querySelector(".template-dirty")?.textContent).toBe(dirty);
+    setValue('[data-input="settings-twitch-template"]', original);
+    expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+  });
+
+  it("saves connection independently while preserving unsaved templates", async () => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "Draft %subtitle%");
+    setValue('[data-input="settings-host"]', "localhost");
+    click("save-settings");
+    await flush();
+    expect(commands()).not.toContain("saveTemplates");
+    click("open-settings");
+    expect(document.querySelector<HTMLTextAreaElement>('[data-input="settings-twitch-template"]')?.value).toBe("Draft %subtitle%");
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    click("save-templates");
+    await flush();
+    expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+  });
+
+  it("recovers unsaved template edits from this browser tab after reload", async () => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "Recovered %subtitle%");
+    click("close-modal");
+    expect(sessionStorage.getItem("change-info-streamer-bot.template-draft.v1")).toContain("Recovered %subtitle%");
+
+    vi.resetModules();
+    document.body.innerHTML = '<div id="app"></div>';
+    await boot();
+    click("open-settings");
+    expect(document.querySelector<HTMLTextAreaElement>('[data-input="settings-twitch-template"]')?.value).toBe("Recovered %subtitle%");
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    click("save-templates");
+    await flush();
+    expect(sessionStorage.getItem("change-info-streamer-bot.template-draft.v1")).toBeNull();
+  });
+
+  it("saves templates independently and does not revert them when saving connection", async () => {
+    await boot();
+    const connections = mockStreamerbot.connectCalls;
+    click("open-settings");
+    setValue('[data-input="settings-host"]', "localhost");
+    setValue('[data-input="settings-twitch-template"]', "Saved %subtitle%");
+    click("save-templates");
+    await flush();
+    expect(mockStreamerbot.connectCalls).toBe(connections);
+    expect(document.querySelector(".modal")).not.toBeNull();
+    const persisted = () => JSON.parse(localStorage.getItem("change-info-streamer-bot.settings.v1")!);
+    expect(persisted().host).toBe("127.0.0.1");
+    expect(persisted().twitchTemplate).toBe("Saved %subtitle%");
+    click("save-settings");
+    expect(persisted().host).toBe("localhost");
+    expect(persisted().twitchTemplate).toBe("Saved %subtitle%");
+    await flush();
+  });
+
+  it.each(["Newer %subtitle%", "original"])("keeps newer template edit %s unsaved when an earlier save completes", async latestEdit => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "First %subtitle%");
+    const latest = latestEdit === "original" ? mockStreamerbot.state.templates.twitchTemplate : latestEdit;
+    const client = mockStreamerbot.instances[0];
+    const original = client.doAction.bind(client);
+    let finish!: () => void;
+    vi.spyOn(client, "doAction").mockImplementationOnce(async (action, args) => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      await original(action, args);
+    });
+    click("save-templates");
+    setValue('[data-input="settings-twitch-template"]', latest);
+    if (latestEdit === "original") expect(document.querySelector(".template-dirty")?.textContent).toBe("");
+    finish();
+    await flush();
+    expect(document.querySelector<HTMLTextAreaElement>('[data-input="settings-twitch-template"]')?.value).toBe(latest);
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    expect(mockStreamerbot.state.templates.twitchTemplate).toBe("First %subtitle%");
+  });
+
+  it("retains the unsaved template status when saving fails", async () => {
+    await boot();
+    click("open-settings");
+    setValue('[data-input="settings-twitch-template"]', "Draft %subtitle%");
+    vi.spyOn(mockStreamerbot.instances[0], "doAction").mockRejectedValueOnce(new Error("Save rejected"));
+    click("save-templates");
+    await flush();
+    expect(document.querySelector(".template-dirty")?.textContent).toContain("несохранённые");
+    expect(document.querySelector(".notice")?.textContent).toContain("Save rejected");
+  });
+
   it("runs refresh, links, preset, template and settings actions without real platform changes", async () => {
     await boot();
     const beforeRefresh = commands().filter((command) => command === "getState").length;
@@ -646,6 +762,111 @@ describe("Stream Info HTML actions", () => {
     expect(document.querySelector('[data-action="choose-category"]')).toBeNull();
     expect(document.querySelector('.autocomplete-list')?.textContent).not.toContain("Ничего не найдено");
     setValue(selector, "");
+  });
+
+  it("places the combined save action outside the subtitle and platform cards", async () => {
+    await boot();
+    expect(action("save-all").closest(".subtitle-panel, .platform-card")).toBeNull();
+    expect(action("save-all").closest(".save-panel")).not.toBeNull();
+    expect(action("save-all").textContent).toBe("Применить изменения");
+    expect(document.querySelector(".cards")?.nextElementSibling?.classList.contains("save-panel")).toBe(true);
+  });
+
+  it("announces edits immediately, confirms saving and clears confirmation on the next edit", async () => {
+    await boot();
+    expect(document.querySelector(".save-status")?.textContent).toBe("Данные загружены");
+    setValue('[data-input="main-subtitle"]', "Новый эфир");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+    click("save-all");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Сохраняем…");
+    await flush();
+    expect(document.querySelector(".save-status")?.textContent).toBe("Изменения применены");
+    click("remove-tag");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+  });
+
+  it("announces unsaved category searches without replacing the focused search input", async () => {
+    await boot();
+    const input = setValue('[data-input="category-query"][data-kind="twitch"]', "PUBG");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+    expect(document.querySelector('[data-input="category-query"][data-kind="twitch"]')).toBe(input);
+  });
+
+  it("preserves the unavailable YouTube draft and does not announce complete success", async () => {
+    mockStreamerbot.state.youtube.broadcastId = "";
+    await boot();
+    setValue('[data-input="main-subtitle"]', "Эфир Twitch");
+    click("save-all");
+    await flush();
+    expect(document.querySelector(".save-status")?.textContent).toContain("Остались несохранённые изменения");
+    mockStreamerbot.state.youtube.broadcastId = "video-restored";
+    click("refresh-state");
+    await flush();
+    expect(document.querySelector('[data-platform="youtube"]')?.textContent).toContain("Эфир Twitch");
+  });
+
+  it("keeps the pending status when a platform rejects the update", async () => {
+    await boot();
+    const client = mockStreamerbot.instances[0];
+    const original = client.doAction.bind(client);
+    vi.spyOn(client, "doAction").mockImplementation(async (action, args) => {
+      if (args?.command === "updateTwitch") throw new Error("Update rejected");
+      return original(action, args);
+    });
+    setValue('[data-input="main-subtitle"]', "Не сохранится");
+    click("save-all");
+    await flush();
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+    expect(document.querySelector(".notices")?.textContent).toContain("Update rejected");
+    expect(document.querySelector('.notice--error[role="alert"] .icon-error')).not.toBeNull();
+  });
+
+  it("keeps unsent tag text and pending status after applying other fields", async () => {
+    await boot();
+    setValue('[data-input="tag-draft"][data-scope="all-twitch"]', "Draft");
+    click("save-all");
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('[data-input="tag-draft"][data-scope="all-twitch"]')?.value).toBe("Draft");
+    expect(document.querySelector(".save-status")?.textContent).toContain("Остались несохранённые изменения");
+  });
+
+  it("renders unchanged as information and skipped YouTube as a warning", async () => {
+    await boot();
+    click("title-mode", 1);
+    click("title-mode", 3);
+    click("save-all");
+    await flush();
+    const info = document.querySelector(".notice--info");
+    expect(info?.textContent).toContain("Нет изменений");
+    expect(info?.getAttribute("role")).toBe("status");
+    expect(info?.querySelector(".icon-info")).not.toBeNull();
+    mockStreamerbot.state.youtube.broadcastId = "";
+    click("refresh-state");
+    await flush();
+    setValue('[data-input="main-subtitle"]', "Эфир");
+    click("save-all");
+    await flush();
+    const warning = document.querySelector(".notice--warning");
+    expect(warning?.textContent).toContain("YouTube");
+    expect(warning?.querySelector(".icon-warning")).not.toBeNull();
+  });
+
+  it("shows a selected category once and invites a new search without exposing IDs", async () => {
+    await boot();
+    for (const platform of ["twitch", "youtube"]) {
+      const card = document.querySelector(`[data-platform="${platform}"]`)!;
+      const selected = card.querySelector(".selected-category")!;
+      const search = card.querySelector<HTMLInputElement>('[data-input="category-query"]')!;
+      expect(selected.textContent).not.toContain("ID");
+      expect(search.placeholder).toBe("Найти другую категорию");
+      expect(search.value).toBe("");
+      expect(search.placeholder).not.toContain(selected.textContent!);
+    }
+    setValue('[data-input="category-query"][data-kind="youtube"]', "20");
+    expect(action("choose-category").dataset.id).toBe("20");
+    expect(action("choose-category").textContent).not.toContain("ID:");
+    click("choose-category");
+    expect(document.querySelector('[data-platform="youtube"] .selected-category')?.textContent).toContain("Видеоигры");
   });
 
   it("edits titles, categories and tags inline and applies them through mocks", async () => {
@@ -756,4 +977,54 @@ describe("Stream Info HTML actions", () => {
     expect(status?.children[1]?.textContent).toBe(`v${packageJson.version}`);
     expect(status?.children).toHaveLength(2);
   });
+  it("changes and remembers appearance without replacing edited fields or making API calls", async () => {
+    await boot();
+    setValue('[data-input="main-subtitle"]', 'Unsaved theme check');
+    const input = document.querySelector('[data-input="main-subtitle"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error('Subtitle field missing');
+    const before = commands();
+    const button = document.querySelector('[data-theme-value="dark"]');
+    if (!(button instanceof HTMLButtonElement)) throw new Error('Theme control missing');
+    button.click();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(localStorage.getItem('stream-info.theme.v1')).toBe('dark');
+    expect(document.querySelector('[data-input="main-subtitle"]')).toBe(input);
+    expect(input.value).toBe('Unsaved theme check');
+    expect(commands()).toEqual(before);
+    document.querySelector<HTMLElement>(".theme-trigger")?.focus();
+    click('refresh-state');
+    await flush();
+    expect(document.activeElement).toBe(document.querySelector('.theme-trigger'));
+    click('open-settings');
+    click('close-modal');
+    expect(document.querySelector('[data-theme-value="dark"]')?.getAttribute('aria-pressed')).toBe('true');
+    const restored = document.querySelector('[data-theme-value="auto"]');
+    if (!(restored instanceof HTMLButtonElement)) throw new Error('Theme control missing');
+    restored.click();
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem('stream-info.theme.v1')).toBeNull();
+  });
+
+  it("retains an open theme menu through background refresh and closes it on Escape or outside click", async () => {
+    await boot();
+    const control = document.querySelector('.theme-control');
+    if (!(control instanceof HTMLDetailsElement)) throw new Error('Theme control missing');
+    control.open = true;
+    document.querySelector<HTMLElement>('[data-theme-value="light"]')?.focus();
+    const before = commands().filter(command => command === 'getState').length;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush();
+    expect(commands().filter(command => command === 'getState').length).toBeGreaterThan(before);
+    expect(document.querySelector<HTMLDetailsElement>('.theme-control')?.open).toBe(true);
+    expect(document.activeElement).toBe(document.querySelector('[data-theme-value="light"]'));
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    expect(document.querySelector<HTMLDetailsElement>('.theme-control')?.open).toBe(false);
+    expect(document.activeElement).toBe(document.querySelector('.theme-trigger'));
+    const restored = document.querySelector('.theme-control');
+    if (!(restored instanceof HTMLDetailsElement)) throw new Error('Theme control missing');
+    restored.open = true;
+    document.body.click();
+    expect(restored.open).toBe(false);
+  });
+
 });

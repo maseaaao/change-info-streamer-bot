@@ -27,6 +27,7 @@ const ACTION_GROUP = "STREAM INFO";
 const ACTION_NAME = "STREAM INFO | API";
 const CODE_EVENT = "stream_info_api_response";
 const STORAGE_KEY = "change-info-streamer-bot.settings.v1";
+const TEMPLATE_DRAFT_KEY = "change-info-streamer-bot.template-draft.v1";
 const REQUEST_TIMEOUT = 15_000;
 const DEMO_MODE = new URLSearchParams(window.location.search).has("demo");
 
@@ -35,10 +36,13 @@ type ActionStatus = "unknown" | "ready" | "missing" | "disabled" | "outdated";
 type Modal = "settings" | null;
 type CardEffect = "success" | "flash-error" | null;
 
+type NoticeKind = "info" | "warning" | "error" | "success";
+
 interface Notice {
   id: string;
   title: string;
   lines: string[];
+  kind: NoticeKind;
 }
 
 interface TemplateDraft {
@@ -68,6 +72,7 @@ interface AppState {
   allSaving: boolean;
   subtitleDirty: boolean;
   allDirty: boolean;
+  allSaveResult: "saved" | "partial" | null;
   allForm: AllForm | null;
   twitchResults: TwitchCategory[];
   twitchSearchFor: string;
@@ -109,7 +114,19 @@ function loadSettings(): ConnectionSettings {
   }
 }
 
+function restoreTemplateDraft(): Pick<TemplateDraft, "twitchTemplate" | "youtubeTemplate"> | null {
+  try {
+    const draft: unknown = JSON.parse(sessionStorage.getItem(TEMPLATE_DRAFT_KEY) ?? "null");
+    if (typeof draft !== "object" || draft === null || !("twitchTemplate" in draft) || !("youtubeTemplate" in draft)) return null;
+    if (typeof draft.twitchTemplate !== "string" || typeof draft.youtubeTemplate !== "string") return null;
+    return { twitchTemplate: draft.twitchTemplate, youtubeTemplate: draft.youtubeTemplate };
+  } catch {
+    return null;
+  }
+}
+
 let settings = loadSettings();
+const recoveredDraft = restoreTemplateDraft();
 const state: AppState = {
   connection: "connecting",
   connectionError: null,
@@ -120,17 +137,18 @@ const state: AppState = {
   modal: null,
   settingsDraft: { ...settings },
   templateDraft: {
-    twitchTemplate: settings.twitchTemplate,
-    youtubeTemplate: settings.youtubeTemplate,
+    twitchTemplate: recoveredDraft?.twitchTemplate ?? settings.twitchTemplate,
+    youtubeTemplate: recoveredDraft?.youtubeTemplate ?? settings.youtubeTemplate,
     subtitle: settings.lastSubtitle,
   },
   presetActions: [],
   runningPresetId: null,
   templatesSaving: false,
-  templatesDirty: false,
+  templatesDirty: recoveredDraft !== null && (recoveredDraft.twitchTemplate !== settings.twitchTemplate || recoveredDraft.youtubeTemplate !== settings.youtubeTemplate),
   allSaving: false,
   subtitleDirty: false,
   allDirty: false,
+  allSaveResult: null,
   allForm: null,
   twitchResults: [],
   twitchSearchFor: "",
@@ -269,8 +287,8 @@ function saveSettings(): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
 }
 
-function notify(title: string, lines: string[]): void {
-  state.notices.unshift({ id: uuid(), title, lines });
+function notify(title: string, lines: string[], kind: NoticeKind = "error"): void {
+  state.notices.unshift({ id: uuid(), title, lines, kind });
   render();
 }
 
@@ -311,6 +329,15 @@ function renderHeader(): string {
   return `<header class="topbar">
     <div class="header-actions">
       <span class="connection connection-${state.connection}"><i></i>${escapeHtml(connectionText())}</span>
+      <details class="theme-control">
+        <summary class="theme-trigger" title="${t("theme")}" aria-label="${t("theme")}: ${t(document.documentElement.dataset.theme === "light" ? "themeLight" : document.documentElement.dataset.theme === "dark" ? "themeDark" : "themeAuto")}">${uiIcon(document.documentElement.dataset.theme === "light" ? "sun" : document.documentElement.dataset.theme === "dark" ? "moon" : "monitor")}</summary>
+        <div class="theme-menu" role="group" aria-label="${t("theme")}">
+          ${["auto", "light", "dark"].map(theme => {
+            const label = t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto");
+            return `<button type="button" class="theme-choice" data-theme-value="${theme}" aria-label="${label}" aria-pressed="${(document.documentElement.dataset.theme ?? "auto") === theme}">${uiIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor")}<span>${label}</span><svg class="theme-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4 10-10"/></svg></button>`;
+          }).join("")}
+        </div>
+      </details>
       ${iconButton("refresh-state", t("refresh"), renderIcon("refresh"), state.connection !== "connected")}
       ${iconButton("open-settings", t("settings"), renderIcon("settings"))}
     </div>
@@ -392,7 +419,7 @@ function renderMain(): string {
   if (!stream) return `<main class="empty-state"><div class="loader"></div><p>${t("loading")}</p></main>`;
   if (!state.allForm) initializeEditor();
   const stamp = state.lastUpdated ? state.lastUpdated.toLocaleTimeString(localeTag[locale], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
-  return `<main class="content"><div class="subtitle-top">${subtitlePanel()}</div><div class="cards">${settings.twitchEnabled ? renderTwitchCard(stream.twitch) : ""}${settings.youtubeEnabled ? renderYouTubeCard(stream.youtube) : ""}</div><div class="presets-below">${presetPanel()}</div><div class="updated-at"><span>${t("updated")} ${escapeHtml(stamp)}</span><span>v${APP_VERSION}</span></div></main>`;
+  return `<main class="content"><div class="subtitle-top">${subtitlePanel()}</div><div class="cards">${settings.twitchEnabled ? renderTwitchCard(stream.twitch) : ""}${settings.youtubeEnabled ? renderYouTubeCard(stream.youtube) : ""}</div>${savePanel()}<div class="presets-below">${presetPanel()}</div><div class="updated-at"><span>${t("updated")} ${escapeHtml(stamp)}</span><span>v${APP_VERSION}</span></div></main>`;
 }
 
 function categoryOptionId(platform: Platform, id: string): string {
@@ -401,7 +428,7 @@ function categoryOptionId(platform: Platform, id: string): string {
 
 function renderCategoryOption(category: TwitchCategory | YouTubeCategory, kind: Platform, scope: string): string {
   const visual = kind === "twitch" ? categoryImage((category as TwitchCategory).imageUrl) : `<span class="category-image youtube-category-icon">${(category as YouTubeCategory).iconSvg}</span>`;
-  return `<button type="button" class="category-option" id="${escapeHtml(categoryOptionId(kind, category.id))}" role="option" aria-selected="${activeCategory[kind] === category.id}" data-action="choose-category" data-kind="${kind}" data-scope="${scope}" data-id="${escapeHtml(category.id)}">${visual}<span><strong>${escapeHtml(category.name)}</strong><small>ID: ${escapeHtml(category.id)}</small></span></button>`;
+  return `<button type="button" class="category-option" id="${escapeHtml(categoryOptionId(kind, category.id))}" role="option" aria-selected="${activeCategory[kind] === category.id}" data-action="choose-category" data-kind="${kind}" data-scope="${scope}" data-id="${escapeHtml(category.id)}">${visual}<span><strong>${escapeHtml(category.name)}</strong></span></button>`;
 }
 
 function renderTagInput(tags: string[], draft: string, scope: string, disabled: boolean): string {
@@ -412,7 +439,7 @@ function categoryControl(platform: Platform, selected: TwitchCategory | YouTubeC
   const ranked = platform === "twitch" ? rankCategories(state.twitchResults, query) : YOUTUBE_CATEGORIES.filter(item => `${item.name} ${item.id}`.toLocaleLowerCase(localeTag[locale]).includes(query.toLocaleLowerCase(localeTag[locale])));
   const results = ranked.slice(0, platform === "twitch" ? visibleCategories : 20);
   const visible = query.trim().length >= (platform === "twitch" ? 2 : 1);
-  const current = selected ? `${selected.name} · ID ${selected.id}` : "";
+  const current = selected?.name ?? "";
   const visual = selected ? (platform === "twitch" ? categoryImage((selected as TwitchCategory).imageUrl) : `<span class="category-image youtube-category-icon">${(selected as YouTubeCategory).iconSvg}</span>`) : "";
   const loading = platform === "twitch" && twitchSearching;
   const error = platform === "twitch" ? searchError : null;
@@ -422,7 +449,7 @@ function categoryControl(platform: Platform, selected: TwitchCategory | YouTubeC
   if (activeCategory[platform] && !results.some(item => item.id === activeCategory[platform])) activeCategory[platform] = null;
   const active = activeCategory[platform];
   const list = `${results.map(item => renderCategoryOption(item, platform, scope)).join("")}<div class="category-search-status" role="${error ? "alert" : "status"}" aria-live="polite">${escapeHtml(status)}</div>${warning}${error ? button(t("categoryRetry"), "retry-category-search") : ""}${more ? button(t("categoryMore"), "more-categories", { data: `aria-disabled="${loading}"` }) : ""}`;
-  return `<div class="autocomplete">${selected ? `<div class="selected-category">${visual}<span>${escapeHtml(current)}</span></div>` : ""}<label>${t("category")}<input data-input="category-query" data-kind="${platform}" data-scope="${scope}" value="${escapeHtml(query)}" placeholder="${escapeHtml(current || t("categorySearch"))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${visible && !disabled}" aria-controls="category-list-${platform}"${active ? ` aria-activedescendant="${escapeHtml(categoryOptionId(platform, active))}"` : ""}${disabled ? " disabled" : ""} /></label>${visible && !disabled ? `<div class="autocomplete-list" id="category-list-${platform}" role="listbox" aria-label="${escapeHtml(t("category"))}">${list}</div>` : ""}</div>`;
+  return `<div class="autocomplete">${selected ? `<div class="selected-category">${visual}<span>${escapeHtml(current)}</span></div>` : ""}<label>${t("category")}<input data-input="category-query" data-kind="${platform}" data-scope="${scope}" value="${escapeHtml(query)}" placeholder="${escapeHtml(t(selected ? "categorySearchOther" : "categorySearch"))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${visible && !disabled}" aria-controls="category-list-${platform}"${active ? ` aria-activedescendant="${escapeHtml(categoryOptionId(platform, active))}"` : ""}${disabled ? " disabled" : ""} /></label>${visible && !disabled ? `<div class="autocomplete-list" id="category-list-${platform}" role="listbox" aria-label="${escapeHtml(t("category"))}">${list}</div>` : ""}</div>`;
 }
 
 // Search updates only its suggestions; retain the actual input, caret and IME.
@@ -456,13 +483,16 @@ function renderCategoryResults(platform: Platform): void {
 }
 
 function updateApplyValidation(): void {
-  const panel = app.querySelector(".subtitle-panel");
+  const panel = app.querySelector(".save-panel");
   if (!panel) return;
   const template = document.createElement("template");
-  template.innerHTML = subtitlePanel();
+  template.innerHTML = savePanel();
   const current = panel.querySelector('[data-action="save-all"]');
   const next = template.content.querySelector('[data-action="save-all"]');
   if (current && next) current.replaceWith(next);
+  const currentStatus = panel.querySelector(".save-status");
+  const nextStatus = template.content.querySelector(".save-status");
+  if (currentStatus && nextStatus) currentStatus.replaceWith(nextStatus);
   panel.querySelector(".form-errors")?.remove();
   const errors = template.content.querySelector(".form-errors");
   if (errors) panel.append(errors);
@@ -513,14 +543,19 @@ function platformSwitch(platform: Platform, scope: string): string {
 
 function subtitlePanel(): string {
   const form = state.allForm;
-  const errors = form ? validateAll(form) : [];
   return `<section class="subtitle-panel" aria-labelledby="subtitle-title">
-    <div class="panel-heading"><h2 id="subtitle-title">${t("subtitle")}</h2><span class="template-store">Streamer.bot</span></div>
+    <div class="panel-heading"><h2 id="subtitle-title">${t("subtitle")}</h2></div>
     <div class="subtitle-grid">
-      <label class="subtitle-field">${t("subtitle")}<input data-input="main-subtitle" value="${escapeHtml(form?.subtitle ?? state.templateDraft.subtitle)}" placeholder="${escapeHtml(t("subtitleExample"))}"${editorBusy() ? " disabled" : ""} /></label>
+      <label class="subtitle-field"><span class="sr-only">${t("subtitle")}</span><input data-input="main-subtitle" value="${escapeHtml(form?.subtitle ?? state.templateDraft.subtitle)}" placeholder="${escapeHtml(t("subtitleExample"))}"${editorBusy() ? " disabled" : ""} /></label>
       ${platformSwitch("twitch", "subtitle-twitch")}${platformSwitch("youtube", "subtitle-youtube")}
-      <div class="subtitle-actions">${button(state.allSaving ? t("saving") : t("apply"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
     </div>
+  </section>`;
+}
+
+function savePanel(): string {
+  const errors = state.allForm ? validateAll(state.allForm) : [];
+  return `<section class="save-panel" aria-label="${t("editInfo")}">
+    <div class="save-actions"><p class="save-status ${state.allDirty ? "is-dirty" : state.allSaveResult ? "is-saved" : ""}" role="status" aria-live="polite">${state.allSaving ? t("saving") : state.allDirty ? t(state.allSaveResult === "partial" ? "changesPartlyApplied" : "changesUnsaved") : state.allSaveResult ? t("changesApplied") : t("changesReady")}</p>${button(state.allSaving ? t("saving") : t("applyChanges"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
     ${errors.length ? `<p class="form-errors">${errors.map(escapeHtml).join("<br />")}</p>` : ""}
   </section>`;
 }
@@ -532,13 +567,14 @@ function templatePanel(): string {
   const twitchTitle = titleFromTemplate(draft.twitchTemplate, subtitle);
   const youtubeTitle = titleFromTemplate(draft.youtubeTemplate, subtitle);
   return `<section class="template-panel settings-template-panel" aria-labelledby="templates-title">
-    <div class="panel-heading"><h2 id="templates-title">${t("templates")}</h2><span class="template-store">Streamer.bot</span></div>
+    <div class="panel-heading"><h2 id="templates-title">${t("templates")}</h2></div>
     <div class="template-grid">
       ${syntaxEditor(t("twitchTemplate"), "settings-twitch-template", draft.twitchTemplate)}
       ${syntaxEditor(t("youtubeTemplate"), "settings-youtube-template", draft.youtubeTemplate)}
     </div>
     <div class="template-preview-grid"><div class="template-preview"><span>Twitch</span><strong>${renderTemplateValue(draft.twitchTemplate, subtitle)}</strong>${titleCounter(twitchTitle, 140)}</div><div class="template-preview"><span>YouTube</span><strong>${renderTemplateValue(draft.youtubeTemplate, subtitle)}</strong>${titleCounter(youtubeTitle, 100)}</div></div>
     ${valid ? "" : `<p class="form-errors">${t("templateValidation")}</p>`}
+    <p class="template-dirty" role="status">${state.templatesDirty ? t("templatesUnsaved") : ""}</p>
     <div class="template-actions">${button(t("reset"), "reset-templates", { icon: uiIcon("refresh") })}${button(state.templatesSaving ? t("saving") : t("saveTemplates"), "save-templates", { className: "button primary", icon: uiIcon("braces"), disabled: !valid || state.templatesSaving })}</div>
   </section>`;
 }
@@ -580,12 +616,12 @@ function settingsModal(): string {
   return `<div class="modal-backdrop"><section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-header"><div><span class="eyebrow">${t("connection")}</span><h2 id="settings-title">${t("settings")}</h2></div>${iconButton("close-modal", t("close"), renderIcon("close"))}</div>
     <div class="modal-body"><section class="settings-section"><h3>${t("connectionToStreamerbot")}</h3><div class="settings-grid"><label>Host<input data-input="settings-host" value="${escapeHtml(draft.host)}" /></label><label>Port<input data-input="settings-port" type="number" min="1" max="65535" value="${escapeHtml(draft.port)}" /></label></div><label>Endpoint<input data-input="settings-endpoint" value="${escapeHtml(draft.endpoint)}" /></label><label>${t("password")}<input data-input="settings-password" type="password" value="${escapeHtml(draft.password)}" autocomplete="current-password" /></label><label class="check-row"><input data-input="settings-remember" type="checkbox"${draft.rememberPassword ? " checked" : ""} />${t("rememberPassword")}</label></section>${templatePanel()}</div>
-    <div class="modal-footer">${button(t("save"), "save-settings", { className: "button primary" })}</div>
+    <div class="modal-footer">${button(t("saveConnection"), "save-settings", { className: "button primary" })}</div>
   </section></div>`;
 }
 
 function noticesHtml(): string {
-  return `<div class="notices">${state.notices.map((notice) => `<aside class="notice"><div><strong>${escapeHtml(notice.title)}</strong>${notice.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</div>${iconButton("close-notice", t("closeNotice"), renderIcon("close"), false, ` data-notice-id="${notice.id}"`)}</aside>`).join("")}</div>`;
+  return `<div class="notices">${state.notices.map((notice) => `<aside class="notice notice--${notice.kind}" role="${notice.kind === "error" ? "alert" : "status"}">${uiIcon(notice.kind === "error" ? "error" : notice.kind === "warning" ? "warning" : notice.kind === "success" ? "check" : "info")}<div><strong>${escapeHtml(notice.title)}</strong>${notice.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</div>${iconButton("close-notice", t("closeNotice"), renderIcon("close"), false, ` data-notice-id="${notice.id}"`)}</aside>`).join("")}</div>`;
 }
 
 function focusedField(): { input: string; scope: string; start: number | null; end: number | null } | null {
@@ -618,6 +654,9 @@ function restoreCategoryOption(focus: ReturnType<typeof focusedCategoryOption>):
 function render(): void {
   if (!app.isConnected) return;
   if (composingCategory) { deferredRender = true; return; }
+  const themeFocus = document.activeElement instanceof HTMLButtonElement ? document.activeElement.dataset.themeValue : undefined;
+  const themeTriggerFocused = document.activeElement?.matches(".theme-trigger") ?? false;
+  const themeOpen = app.querySelector<HTMLDetailsElement>(".theme-control")?.open ?? false;
   const focus = focusedField();
   const optionFocus = focusedCategoryOption();
   const dialogActionFocus = focusedDialogAction();
@@ -635,6 +674,10 @@ function render(): void {
     next.replaceWith(old);
   }
   restoreCategoryOption(optionFocus);
+  const themeControl = app.querySelector<HTMLDetailsElement>(".theme-control");
+  if (themeControl) themeControl.open = themeOpen && !state.modal;
+  if (themeTriggerFocused && !state.modal) themeControl?.querySelector<HTMLElement>("summary")?.focus();
+  if (themeFocus && !state.modal) app.querySelector<HTMLElement>(`[data-theme-value="${themeFocus}"]`)?.focus();
   if (state.modal) {
     for (const child of Array.from(app.children)) if (!child.classList.contains("modal-backdrop")) child.setAttribute("inert", "");
     const dialog = app.querySelector<HTMLElement>('[role="dialog"]');
@@ -693,12 +736,29 @@ function normalizeTemplates(value: unknown): TemplateState {
   };
 }
 
-function syncTemplates(templates: TemplateState): void {
+function updateTemplatesDirty(): void {
+  state.templatesDirty = state.templateDraft.twitchTemplate !== settings.twitchTemplate || state.templateDraft.youtubeTemplate !== settings.youtubeTemplate;
+  try {
+    if (state.templatesDirty) {
+      sessionStorage.setItem(TEMPLATE_DRAFT_KEY, JSON.stringify({
+        twitchTemplate: state.templateDraft.twitchTemplate,
+        youtubeTemplate: state.templateDraft.youtubeTemplate,
+      }));
+    } else {
+      sessionStorage.removeItem(TEMPLATE_DRAFT_KEY);
+    }
+  } catch {
+    // Storage may be disabled in an embedded browser; keep the in-memory draft.
+  }
+}
+
+function syncTemplates(templates: TemplateState, preserveDraft = false): void {
   const hasLocalCustomTemplate = settings.twitchTemplate !== DEFAULT_TWITCH_TEMPLATE || settings.youtubeTemplate !== DEFAULT_YOUTUBE_TEMPLATE || Boolean(settings.lastSubtitle);
   if (!templates.configured && hasLocalCustomTemplate) return;
   settings = { ...settings, twitchTemplate: templates.twitchTemplate, youtubeTemplate: templates.youtubeTemplate, lastSubtitle: templates.subtitle };
   saveSettings();
-  if (!state.templatesDirty && !state.subtitleDirty) state.templateDraft = { twitchTemplate: templates.twitchTemplate, youtubeTemplate: templates.youtubeTemplate, subtitle: templates.subtitle };
+  if (!preserveDraft && !state.templatesDirty && !state.subtitleDirty) state.templateDraft = { twitchTemplate: templates.twitchTemplate, youtubeTemplate: templates.youtubeTemplate, subtitle: templates.subtitle };
+  updateTemplatesDirty();
 }
 
 function handleCodeEvent(payload: unknown): void {
@@ -841,7 +901,7 @@ async function callAction(command: string, payload: Record<string, unknown> = {}
 }
 
 async function saveTemplates(): Promise<void> {
-  const draft = state.templateDraft;
+  const draft = { ...state.templateDraft };
   if (!isTemplateValid(draft.twitchTemplate) || !isTemplateValid(draft.youtubeTemplate)) return;
   state.templatesSaving = true;
   render();
@@ -849,9 +909,9 @@ async function saveTemplates(): Promise<void> {
     const response = await callAction("saveTemplates", { twitchTemplate: draft.twitchTemplate, youtubeTemplate: draft.youtubeTemplate, subtitle: settings.lastSubtitle });
     if (!response.ok || !response.data) throw new Error(response.error?.message ?? t("templateStateSaveFailed"));
     const templates = normalizeTemplates(response.data.templates);
-    syncTemplates({ ...templates, configured: true });
-    state.templatesDirty = false;
-    notify(t("templateSaved"), [t("templateSavedDescription")]);
+    const editedWhileSaving = state.templateDraft.twitchTemplate !== draft.twitchTemplate || state.templateDraft.youtubeTemplate !== draft.youtubeTemplate;
+    syncTemplates({ ...templates, configured: true }, editedWhileSaving);
+    notify(t("templateSaved"), [t("templateSavedDescription")], "success");
   } catch (error) {
     notify(t("templateSaveFailed"), [error instanceof Error ? error.message : t("unknownError")]);
   } finally {
@@ -888,7 +948,7 @@ async function runPreset(id: string, name: string): Promise<void> {
   try {
     await client.doAction({ id }, {});
     window.setTimeout(() => { void refreshState(false); }, 700);
-    notify(t("presetStarted"), [name]);
+    notify(t("presetStarted"), [name], "info");
   } catch (error) {
     notify(t("presetStartFailed"), [error instanceof Error ? error.message : t("unknownError")]);
   } finally {
@@ -935,7 +995,7 @@ function categoryFromState(platform: Platform): TwitchCategory | YouTubeCategory
   return YOUTUBE_CATEGORIES.find((category) => category.id === item.categoryId) ?? { id: item.categoryId ?? "", name: item.categoryName ?? "", iconSvg: FALLBACK_CATEGORY_SVG };
 }
 
-function initializeEditor(): void {
+function initializeEditor(preservePlatforms: Platform[] = []): void {
   if (!state.stream) return;
   const previous = state.allForm;
   resetCategorySearch();
@@ -949,20 +1009,20 @@ function initializeEditor(): void {
     youtubeCategory: categoryFromState("youtube") as YouTubeCategory | null,
     twitchTags: [...asStringArray(state.stream.twitch.tags)],
     youtubeTags: [...asStringArray(state.stream.youtube.tags)],
-    twitchTagDraft: "",
-    youtubeTagDraft: "",
+    twitchTagDraft: previous?.twitchTagDraft ?? "",
+    youtubeTagDraft: previous?.youtubeTagDraft ?? "",
     twitchCategoryQuery: "",
     youtubeCategoryQuery: "",
   };
   if (previous) {
-    if (!settings.twitchEnabled) {
+    if (!settings.twitchEnabled || preservePlatforms.includes("twitch")) {
       state.allForm.twitchTitle = previous.twitchTitle;
       state.allForm.twitchCategory = previous.twitchCategory;
       state.allForm.twitchTags = previous.twitchTags;
       state.allForm.twitchTagDraft = previous.twitchTagDraft;
       state.allForm.twitchCategoryQuery = previous.twitchCategoryQuery;
     }
-    if (!settings.youtubeEnabled) {
+    if (!settings.youtubeEnabled || preservePlatforms.includes("youtube")) {
       state.allForm.youtubeTitle = previous.youtubeTitle;
       state.allForm.youtubeCategory = previous.youtubeCategory;
       state.allForm.youtubeTags = previous.youtubeTags;
@@ -1085,10 +1145,22 @@ async function saveAll(): Promise<void> {
     const jobs: Promise<boolean>[] = [];
     if (Object.keys(twitchPayload).length) jobs.push(updatePlatform("twitch", twitchPayload));
     if (youtubeAvailable && Object.keys(youtubePayload).length) jobs.push(updatePlatform("youtube", youtubePayload));
-    if (settings.youtubeEnabled && !youtubeAvailable) notify(t("youtubeSkipped"), [t("youtubeNotStarted")]);
-    if (!jobs.length) { if (!settings.youtubeEnabled || youtubeAvailable) notify(t("unchanged"), [t("unchangedDescription")]); return; }
+    if (settings.youtubeEnabled && !youtubeAvailable) notify(t("youtubeSkipped"), [t("youtubeNotStarted")], "warning");
+    if (!jobs.length && (!settings.youtubeEnabled || youtubeAvailable)) notify(t("unchanged"), [t("unchangedDescription")], "info");
     const results = await Promise.all(jobs);
-    if (results.every(Boolean)) { state.allDirty = !settings.twitchEnabled || !settings.youtubeEnabled; initializeEditor(); }
+    if (results.every(Boolean)) {
+      const preserved = (["twitch", "youtube"] as Platform[]).filter(platform => !platformAvailable(platform));
+      const pending = preserved.some(platform => {
+        const current = stream[platform];
+        const category = platform === "twitch" ? form.twitchCategory : form.youtubeCategory;
+        const tags = platform === "twitch" ? form.twitchTags : form.youtubeTags;
+        const query = platform === "twitch" ? form.twitchCategoryQuery : form.youtubeCategoryQuery;
+        return inlineTitle(platform, form) !== current.title || (category !== null && category.id !== current.categoryId) || !tagsEqual(tags, asStringArray(current.tags)) || query.trim().length > 0;
+      }) || Boolean(form.twitchTagDraft.trim() || form.youtubeTagDraft.trim());
+      initializeEditor(preserved);
+      state.allDirty = pending;
+      state.allSaveResult = pending ? "partial" : "saved";
+    }
   } finally {
     state.allSaving = false;
     render();
@@ -1098,7 +1170,7 @@ async function saveAll(): Promise<void> {
 function addTag(scope: string): void {
   const holder = getTagHolder(scope);
   if (!holder) return;
-  state.allDirty = true;
+  state.allDirty = true; state.allSaveResult = null;
   const value = holder.draft.trim();
   if (!value) return;
   if (!holder.tags.some((tag) => tag.localeCompare(value, locale, { sensitivity: "accent" }) === 0)) holder.tags.push(value);
@@ -1117,7 +1189,7 @@ function chooseCategory(kind: Platform, scope: string, id: string): void {
   if (!category) return;
   if (scope === "all-twitch" && state.allForm && kind === "twitch") { state.allForm.twitchCategory = category as TwitchCategory; state.allForm.twitchCategoryQuery = ""; }
   if (scope === "all-youtube" && state.allForm && kind === "youtube") { state.allForm.youtubeCategory = category as YouTubeCategory; state.allForm.youtubeCategoryQuery = ""; }
-  state.allDirty = true;
+  state.allDirty = true; state.allSaveResult = null;
   activeCategory[kind] = null;
   if (kind === "twitch") resetCategorySearch();
   render();
@@ -1193,35 +1265,36 @@ function updateInput(target: HTMLInputElement | HTMLTextAreaElement): void {
     case "settings-endpoint": state.settingsDraft.endpoint = target.value.trim() || "/"; break;
     case "settings-password": state.settingsDraft.password = target.value; break;
     case "settings-remember": if (target instanceof HTMLInputElement) state.settingsDraft.rememberPassword = target.checked; break;
-    case "settings-twitch-template": state.templateDraft.twitchTemplate = target.value; state.templatesDirty = true; break;
-    case "settings-youtube-template": state.templateDraft.youtubeTemplate = target.value; state.templatesDirty = true; break;
+    case "settings-twitch-template": state.templateDraft.twitchTemplate = target.value; updateTemplatesDirty(); break;
+    case "settings-youtube-template": state.templateDraft.youtubeTemplate = target.value; updateTemplatesDirty(); break;
     case "main-subtitle":
       state.templateDraft.subtitle = target.value; state.subtitleDirty = true;
       if (state.allForm) {
         state.allForm.subtitle = target.value;
         if (settings.twitchEnabled) state.allForm.twitchTitleMode = "subtitle";
         if (settings.youtubeEnabled) state.allForm.youtubeTitleMode = "subtitle";
-        state.allDirty = true;
+        state.allDirty = true; state.allSaveResult = null;
       }
       break;
     case "inline-title":
       if (state.allForm) {
         if (target.dataset.kind === "twitch") state.allForm.twitchTitle = target.value;
         else state.allForm.youtubeTitle = target.value;
-        state.allDirty = true;
+        state.allDirty = true; state.allSaveResult = null;
       }
       break;
-    case "tag-draft": { state.allDirty = true; const holder = getTagHolder(scope); if (holder) holder.setDraft(target.value); break; }
+    case "tag-draft": { state.allDirty = true; state.allSaveResult = null; const holder = getTagHolder(scope); if (holder) holder.setDraft(target.value); break; }
     case "category-query": {
       const previous = target.dataset.kind === "twitch" ? state.allForm?.twitchCategoryQuery : state.allForm?.youtubeCategoryQuery;
       // Browsers emit change on blur after input. Do not erase the option
       // under the pointer or restart an identical search before its click.
       if (previous === target.value) return;
-      state.allDirty = true;
+      state.allDirty = true; state.allSaveResult = null;
       const kind = target.dataset.kind as Platform;
       if (scope === "all-twitch" && state.allForm) state.allForm.twitchCategoryQuery = target.value;
       if (scope === "all-youtube" && state.allForm) state.allForm.youtubeCategoryQuery = target.value;
       activeCategory[kind] = null;
+      updateApplyValidation();
       if (composingCategory === target) return;
       if (kind === "twitch") scheduleTwitchSearch(target.value); else renderCategoryResults("youtube");
       return;
@@ -1269,9 +1342,60 @@ app.addEventListener("input", (event) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
 });
 
+function syncThemeControl(): void {
+  const theme = document.documentElement.dataset.theme ?? "auto";
+  app.querySelectorAll<HTMLElement>("[data-theme-value]").forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.themeValue === theme)); });
+  const trigger = app.querySelector(".theme-trigger");
+  if (!trigger) return;
+  trigger.innerHTML = uiIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor");
+  trigger.setAttribute("aria-label", `${t("theme")}: ${t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto")}`);
+}
+
+function setTheme(target: HTMLButtonElement): void {
+  const theme = target.dataset.themeValue;
+  if (theme !== "auto" && theme !== "light" && theme !== "dark") return;
+  if (theme === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  syncThemeControl();
+  const control = target.closest(".theme-control");
+  if (control instanceof HTMLDetailsElement) {
+    control.open = false;
+    control.querySelector("summary")?.focus();
+  }
+  try {
+    if (theme === "auto") localStorage.removeItem("stream-info.theme.v1");
+    else localStorage.setItem("stream-info.theme.v1", theme);
+  } catch { /* Keep the in-memory choice when storage is unavailable. */ }
+}
+
 app.addEventListener("change", (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
+});
+
+window.addEventListener("storage", event => {
+  if (event.key !== "stream-info.theme.v1" && event.key !== null) return;
+  const theme = event.newValue;
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  syncThemeControl();
+});
+
+document.addEventListener("click", event => {
+  const control = app.querySelector<HTMLDetailsElement>(".theme-control[open]");
+  if (control && event.target instanceof Node && !control.contains(event.target)) control.open = false;
+});
+document.addEventListener("focusin", event => {
+  const control = app.querySelector<HTMLDetailsElement>(".theme-control[open]");
+  if (control && event.target instanceof Node && !control.contains(event.target)) control.open = false;
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  const control = app.querySelector<HTMLDetailsElement>(".theme-control[open]");
+  if (!control) return;
+  control.open = false;
+  control.querySelector("summary")?.focus();
+  event.preventDefault();
 });
 
 app.addEventListener("keydown", (event) => {
@@ -1323,11 +1447,17 @@ app.addEventListener("keydown", (event) => {
   if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addTag(scope); }
   if (event.key === "Backspace" && !target.value) {
     const holder = getTagHolder(scope);
-    if (holder?.tags.length) { holder.tags.pop(); state.allDirty = true; render(); }
+    if (holder?.tags.length) { holder.tags.pop(); state.allDirty = true; state.allSaveResult = null; render(); }
   }
 });
 
 app.addEventListener("click", (event) => {
+  const themeButton = event.target instanceof Element ? event.target.closest("button[data-theme-value]") : null;
+  if (themeButton instanceof HTMLButtonElement) {
+    setTheme(themeButton);
+    return;
+  }
+
   if (event.target instanceof HTMLElement && event.target.classList.contains("modal-backdrop")) { clearModal(); return; }
   const target = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
   if (!target) return;
@@ -1347,11 +1477,11 @@ app.addEventListener("click", (event) => {
         const mode = target.dataset.mode === "subtitle" ? "subtitle" : "full";
         if (target.dataset.platform === "twitch") state.allForm.twitchTitleMode = mode;
         else state.allForm.youtubeTitleMode = mode;
-        state.allDirty = true;
+        state.allDirty = true; state.allSaveResult = null;
         render();
       }
       break;
-    case "remove-tag": { const holder = getTagHolder(target.dataset.scope ?? ""); const index = Number(target.dataset.index); if (holder && Number.isInteger(index)) { holder.tags.splice(index, 1); state.allDirty = true; render(); } break; }
+    case "remove-tag": { const holder = getTagHolder(target.dataset.scope ?? ""); const index = Number(target.dataset.index); if (holder && Number.isInteger(index)) { holder.tags.splice(index, 1); state.allDirty = true; state.allSaveResult = null; render(); } break; }
     case "choose-category": chooseCategory(target.dataset.kind as Platform, target.dataset.scope ?? "", target.dataset.id ?? ""); break;
     case "retry-category-search":
       if (failedSearch && !twitchSearching) { searchError = null; twitchSearching = true; renderCategoryResults("twitch"); void runSearch(failedSearch); }
@@ -1363,10 +1493,17 @@ app.addEventListener("click", (event) => {
       break;
     case "save-all": void saveAll(); break;
     case "save-templates": void saveTemplates(); break;
-    case "reset-templates": state.templateDraft = { twitchTemplate: DEFAULT_TWITCH_TEMPLATE, youtubeTemplate: DEFAULT_YOUTUBE_TEMPLATE, subtitle: state.templateDraft.subtitle }; state.templatesDirty = true; render(); break;
+    case "reset-templates": state.templateDraft = { twitchTemplate: DEFAULT_TWITCH_TEMPLATE, youtubeTemplate: DEFAULT_YOUTUBE_TEMPLATE, subtitle: state.templateDraft.subtitle }; updateTemplatesDirty(); render(); break;
     case "run-preset": void runPreset(target.dataset.presetId ?? "", target.dataset.presetName ?? t("presetDefault")); break;
     case "save-settings": {
-      settings = { ...state.settingsDraft, endpoint: state.settingsDraft.endpoint || "/", port: Math.max(1, Math.min(65535, Number(state.settingsDraft.port) || 8080)) };
+      settings = {
+        ...settings,
+        host: state.settingsDraft.host,
+        password: state.settingsDraft.password,
+        rememberPassword: state.settingsDraft.rememberPassword,
+        endpoint: state.settingsDraft.endpoint || "/",
+        port: Math.max(1, Math.min(65535, Number(state.settingsDraft.port) || 8080)),
+      };
       // Connection settings do not discard unsaved stream metadata drafts.
       saveSettings(); clearModal(); void connect(); break;
     }

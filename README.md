@@ -6,7 +6,7 @@ One self-contained HTML control surface for updating Twitch and YouTube stream m
 
 ![English dashboard showcase](docs/screenshots/dashboard-en.png)
 
-Version 1.3.2 interface; screenshots refreshed on October 14, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
+Version 1.3.2 interface; screenshots refreshed on October 17, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
 
 ## What it does
 
@@ -64,7 +64,7 @@ For a safe visual tour with sample data, append `?demo=1` to any built HTML file
 
 ## Connection and template settings
 
-The gear button opens Host, Port, Endpoint, and WebSocket password settings. **Save** saves connection settings. Templates have a separate **Save templates** button: check the previews and length counters first. **Reset** fills the editors with default templates; save them to persist the reset. Closing Settings preserves unsaved main-page edits.
+The gear button opens Host, Port, Endpoint, and WebSocket password settings. **Save connection** saves connection settings. Templates have a separate **Save templates** button: check the previews and length counters first. **Reset** fills the editors with default templates; save them to persist the reset. Closing Settings preserves unsaved main-page edits. Uncommitted template edits survive a reload in the same browser tab (session storage) until you save them to Streamer.bot; they are not shared with other tabs or devices.
 
 ![Connection and template settings](docs/screenshots/settings-en.png)
 
@@ -126,6 +126,8 @@ Pushing a tag named `v*` creates a GitHub Release containing each HTML file from
 Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. For contribution expectations, see [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Credits
+
+The main visual design reference is [Hermes Desktop](https://hermes-agent.nousresearch.com/desktop) by Nous Research, which inspired the project's palette, typography, component shapes, and composition.
 
 Thank you to [nutty.gg](https://nutty.gg/) for the idea and inspiration behind the focused streamer control-surface direction.
 

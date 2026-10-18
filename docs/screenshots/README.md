@@ -27,3 +27,12 @@ The companion browser check covered ru/en/es/zh at widths 320, 390, 540, 820 and
 6. Check all four images, README links, version, and date; stop the preview server / Проверьте четыре снимка, ссылки README, версию и дату; остановите сервер просмотра.
 
 Never capture working credentials or use live Apply/preset actions for documentation screenshots / Не снимайте рабочие пароли и не применяйте живые изменения или пресеты ради скриншотов.
+
+
+## Theme comparisons
+
+The `*-light-*.png` and `*-dark-*.png` images show the same UI with automatic
+light/dark system preferences in Chromium 153. Site previews: 390/1440px with
+isolated offline Twitch and manually collapsed chat. Dock: 390/1200px in demo
+mode; `settings-light.png` and `settings-dark.png` show the settings dialog.
+See `../themes.md` for palette, measured contrast and behavior.

@@ -324,6 +324,11 @@ function renderHeader(): string {
   return `<header class="topbar">
     <div class="header-actions">
       <span class="connection connection-${state.connection}"><i></i>${escapeHtml(connectionText())}</span>
+      <label class="theme-control"><span class="sr-only">${t("theme")}</span>
+        <select data-theme-select aria-label="${t("theme")}">
+          ${["auto", "light", "dark"].map(theme => `<option value="${theme}"${(document.documentElement.dataset.theme ?? "auto") === theme ? " selected" : ""}>${t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto")}</option>`).join("")}
+        </select>
+      </label>
       ${iconButton("refresh-state", t("refresh"), renderIcon("refresh"), state.connection !== "connected")}
       ${iconButton("open-settings", t("settings"), renderIcon("settings"))}
     </div>
@@ -632,6 +637,7 @@ function restoreCategoryOption(focus: ReturnType<typeof focusedCategoryOption>):
 function render(): void {
   if (!app.isConnected) return;
   if (composingCategory) { deferredRender = true; return; }
+  const themeFocused = document.activeElement instanceof HTMLSelectElement && document.activeElement.matches("[data-theme-select]");
   const focus = focusedField();
   const optionFocus = focusedCategoryOption();
   const dialogActionFocus = focusedDialogAction();
@@ -649,6 +655,7 @@ function render(): void {
     next.replaceWith(old);
   }
   restoreCategoryOption(optionFocus);
+  if (themeFocused && !state.modal) app.querySelector<HTMLElement>("[data-theme-select]")?.focus();
   if (state.modal) {
     for (const child of Array.from(app.children)) if (!child.classList.contains("modal-backdrop")) child.setAttribute("inert", "");
     const dialog = app.querySelector<HTMLElement>('[role="dialog"]');
@@ -1302,7 +1309,26 @@ app.addEventListener("input", (event) => {
 
 app.addEventListener("change", (event) => {
   const target = event.target;
+  if (target instanceof HTMLSelectElement && target.matches("[data-theme-select]")) {
+    const theme = target.value;
+    if (theme !== "auto" && theme !== "light" && theme !== "dark") return;
+    if (theme === "auto") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    try {
+      if (theme === "auto") localStorage.removeItem("stream-info.theme.v1");
+      else localStorage.setItem("stream-info.theme.v1", theme);
+    } catch { /* Keep the in-memory choice when storage is unavailable. */ }
+  }
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
+});
+
+window.addEventListener("storage", event => {
+  if (event.key !== "stream-info.theme.v1" && event.key !== null) return;
+  const theme = event.newValue;
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  const select = document.querySelector("[data-theme-select]");
+  if (select instanceof HTMLSelectElement) select.value = document.documentElement.dataset.theme ?? "auto";
 });
 
 app.addEventListener("keydown", (event) => {

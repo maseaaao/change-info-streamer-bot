@@ -49,6 +49,7 @@ describe("Stream Info HTML actions", () => {
     vi.resetModules();
     mockStreamerbot.reset();
     localStorage.clear();
+    delete document.documentElement.dataset.theme;
     sessionStorage.clear();
     window.history.replaceState({}, "", "/");
     document.body.innerHTML = '<div id="app"></div>';
@@ -871,4 +872,34 @@ describe("Stream Info HTML actions", () => {
     expect(status?.children[1]?.textContent).toBe(`v${packageJson.version}`);
     expect(status?.children).toHaveLength(2);
   });
+  it("changes and remembers appearance without replacing edited fields or making API calls", async () => {
+    await boot();
+    setValue('[data-input="main-subtitle"]', 'Unsaved theme check');
+    const input = document.querySelector('[data-input="main-subtitle"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error('Subtitle field missing');
+    const before = commands();
+    const select = document.querySelector('[data-theme-select]');
+    if (!(select instanceof HTMLSelectElement)) throw new Error('Theme control missing');
+    select.value = 'dark';
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(localStorage.getItem('stream-info.theme.v1')).toBe('dark');
+    expect(document.querySelector('[data-input="main-subtitle"]')).toBe(input);
+    expect(input.value).toBe('Unsaved theme check');
+    expect(commands()).toEqual(before);
+    select.focus();
+    click('refresh-state');
+    await flush();
+    expect(document.activeElement).toBe(document.querySelector('[data-theme-select]'));
+    click('open-settings');
+    click('close-modal');
+    expect(document.querySelector<HTMLSelectElement>('[data-theme-select]')?.value).toBe('dark');
+    const restored = document.querySelector('[data-theme-select]');
+    if (!(restored instanceof HTMLSelectElement)) throw new Error('Theme control missing');
+    restored.value = 'auto';
+    restored.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem('stream-info.theme.v1')).toBeNull();
+  });
+
 });

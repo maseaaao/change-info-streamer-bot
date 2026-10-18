@@ -3,7 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        const theme = localStorage.getItem("stream-info.theme.v1");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch { /* CSS follows the system when storage is unavailable. */ }
+    </script>
     <link rel="icon" href="data:," />
     <title>Stream Info</title>
   <script type="text/plain" id="unbounded-license">

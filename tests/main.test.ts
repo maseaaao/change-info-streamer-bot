@@ -764,6 +764,14 @@ describe("Stream Info HTML actions", () => {
     setValue(selector, "");
   });
 
+  it("places the combined save action outside the subtitle and platform cards", async () => {
+    await boot();
+    expect(action("save-all").closest(".subtitle-panel, .platform-card")).toBeNull();
+    expect(action("save-all").closest(".save-panel")).not.toBeNull();
+    expect(action("save-all").textContent).toBe("Применить изменения");
+    expect(document.querySelector(".cards")?.nextElementSibling?.classList.contains("save-panel")).toBe(true);
+  });
+
   it("edits titles, categories and tags inline and applies them through mocks", async () => {
     await boot();
     setValue('[data-input="tag-draft"][data-scope="all-twitch"]', "Rust");

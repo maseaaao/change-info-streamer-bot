@@ -414,7 +414,7 @@ function renderMain(): string {
   if (!stream) return `<main class="empty-state"><div class="loader"></div><p>${t("loading")}</p></main>`;
   if (!state.allForm) initializeEditor();
   const stamp = state.lastUpdated ? state.lastUpdated.toLocaleTimeString(localeTag[locale], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
-  return `<main class="content"><div class="subtitle-top">${subtitlePanel()}</div><div class="cards">${settings.twitchEnabled ? renderTwitchCard(stream.twitch) : ""}${settings.youtubeEnabled ? renderYouTubeCard(stream.youtube) : ""}</div><div class="presets-below">${presetPanel()}</div><div class="updated-at"><span>${t("updated")} ${escapeHtml(stamp)}</span><span>v${APP_VERSION}</span></div></main>`;
+  return `<main class="content"><div class="subtitle-top">${subtitlePanel()}</div><div class="cards">${settings.twitchEnabled ? renderTwitchCard(stream.twitch) : ""}${settings.youtubeEnabled ? renderYouTubeCard(stream.youtube) : ""}</div>${savePanel()}<div class="presets-below">${presetPanel()}</div><div class="updated-at"><span>${t("updated")} ${escapeHtml(stamp)}</span><span>v${APP_VERSION}</span></div></main>`;
 }
 
 function categoryOptionId(platform: Platform, id: string): string {
@@ -478,10 +478,10 @@ function renderCategoryResults(platform: Platform): void {
 }
 
 function updateApplyValidation(): void {
-  const panel = app.querySelector(".subtitle-panel");
+  const panel = app.querySelector(".save-panel");
   if (!panel) return;
   const template = document.createElement("template");
-  template.innerHTML = subtitlePanel();
+  template.innerHTML = savePanel();
   const current = panel.querySelector('[data-action="save-all"]');
   const next = template.content.querySelector('[data-action="save-all"]');
   if (current && next) current.replaceWith(next);
@@ -535,14 +535,19 @@ function platformSwitch(platform: Platform, scope: string): string {
 
 function subtitlePanel(): string {
   const form = state.allForm;
-  const errors = form ? validateAll(form) : [];
   return `<section class="subtitle-panel" aria-labelledby="subtitle-title">
     <div class="panel-heading"><h2 id="subtitle-title">${t("subtitle")}</h2></div>
     <div class="subtitle-grid">
       <label class="subtitle-field"><span class="sr-only">${t("subtitle")}</span><input data-input="main-subtitle" value="${escapeHtml(form?.subtitle ?? state.templateDraft.subtitle)}" placeholder="${escapeHtml(t("subtitleExample"))}"${editorBusy() ? " disabled" : ""} /></label>
       ${platformSwitch("twitch", "subtitle-twitch")}${platformSwitch("youtube", "subtitle-youtube")}
-      <div class="subtitle-actions">${button(state.allSaving ? t("saving") : t("apply"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
     </div>
+  </section>`;
+}
+
+function savePanel(): string {
+  const errors = state.allForm ? validateAll(state.allForm) : [];
+  return `<section class="save-panel" aria-label="${t("editInfo")}">
+    <div class="save-actions">${button(state.allSaving ? t("saving") : t("applyChanges"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
     ${errors.length ? `<p class="form-errors">${errors.map(escapeHtml).join("<br />")}</p>` : ""}
   </section>`;
 }

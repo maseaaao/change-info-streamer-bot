@@ -69,6 +69,7 @@ interface AppState {
   allSaving: boolean;
   subtitleDirty: boolean;
   allDirty: boolean;
+  allSaveResult: "saved" | "partial" | null;
   allForm: AllForm | null;
   twitchResults: TwitchCategory[];
   twitchSearchFor: string;
@@ -144,6 +145,7 @@ const state: AppState = {
   allSaving: false,
   subtitleDirty: false,
   allDirty: false,
+  allSaveResult: null,
   allForm: null,
   twitchResults: [],
   twitchSearchFor: "",
@@ -485,6 +487,9 @@ function updateApplyValidation(): void {
   const current = panel.querySelector('[data-action="save-all"]');
   const next = template.content.querySelector('[data-action="save-all"]');
   if (current && next) current.replaceWith(next);
+  const currentStatus = panel.querySelector(".save-status");
+  const nextStatus = template.content.querySelector(".save-status");
+  if (currentStatus && nextStatus) currentStatus.replaceWith(nextStatus);
   panel.querySelector(".form-errors")?.remove();
   const errors = template.content.querySelector(".form-errors");
   if (errors) panel.append(errors);
@@ -547,7 +552,7 @@ function subtitlePanel(): string {
 function savePanel(): string {
   const errors = state.allForm ? validateAll(state.allForm) : [];
   return `<section class="save-panel" aria-label="${t("editInfo")}">
-    <div class="save-actions">${button(state.allSaving ? t("saving") : t("applyChanges"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
+    <div class="save-actions"><p class="save-status ${state.allDirty ? "is-dirty" : state.allSaveResult ? "is-saved" : ""}" role="status" aria-live="polite">${state.allSaving ? t("saving") : state.allDirty ? t(state.allSaveResult === "partial" ? "changesPartlyApplied" : "changesUnsaved") : state.allSaveResult ? t("changesApplied") : t("changesReady")}</p>${button(state.allSaving ? t("saving") : t("applyChanges"), "save-all", { className: "button primary", disabled: errors.length > 0 || editorBusy() || (!platformAvailable("twitch") && !platformAvailable("youtube")) })}</div>
     ${errors.length ? `<p class="form-errors">${errors.map(escapeHtml).join("<br />")}</p>` : ""}
   </section>`;
 }
@@ -987,7 +992,7 @@ function categoryFromState(platform: Platform): TwitchCategory | YouTubeCategory
   return YOUTUBE_CATEGORIES.find((category) => category.id === item.categoryId) ?? { id: item.categoryId ?? "", name: item.categoryName ?? "", iconSvg: FALLBACK_CATEGORY_SVG };
 }
 
-function initializeEditor(): void {
+function initializeEditor(preservePlatforms: Platform[] = []): void {
   if (!state.stream) return;
   const previous = state.allForm;
   resetCategorySearch();
@@ -1001,20 +1006,20 @@ function initializeEditor(): void {
     youtubeCategory: categoryFromState("youtube") as YouTubeCategory | null,
     twitchTags: [...asStringArray(state.stream.twitch.tags)],
     youtubeTags: [...asStringArray(state.stream.youtube.tags)],
-    twitchTagDraft: "",
-    youtubeTagDraft: "",
+    twitchTagDraft: previous?.twitchTagDraft ?? "",
+    youtubeTagDraft: previous?.youtubeTagDraft ?? "",
     twitchCategoryQuery: "",
     youtubeCategoryQuery: "",
   };
   if (previous) {
-    if (!settings.twitchEnabled) {
+    if (!settings.twitchEnabled || preservePlatforms.includes("twitch")) {
       state.allForm.twitchTitle = previous.twitchTitle;
       state.allForm.twitchCategory = previous.twitchCategory;
       state.allForm.twitchTags = previous.twitchTags;
       state.allForm.twitchTagDraft = previous.twitchTagDraft;
       state.allForm.twitchCategoryQuery = previous.twitchCategoryQuery;
     }
-    if (!settings.youtubeEnabled) {
+    if (!settings.youtubeEnabled || preservePlatforms.includes("youtube")) {
       state.allForm.youtubeTitle = previous.youtubeTitle;
       state.allForm.youtubeCategory = previous.youtubeCategory;
       state.allForm.youtubeTags = previous.youtubeTags;
@@ -1138,9 +1143,21 @@ async function saveAll(): Promise<void> {
     if (Object.keys(twitchPayload).length) jobs.push(updatePlatform("twitch", twitchPayload));
     if (youtubeAvailable && Object.keys(youtubePayload).length) jobs.push(updatePlatform("youtube", youtubePayload));
     if (settings.youtubeEnabled && !youtubeAvailable) notify(t("youtubeSkipped"), [t("youtubeNotStarted")]);
-    if (!jobs.length) { if (!settings.youtubeEnabled || youtubeAvailable) notify(t("unchanged"), [t("unchangedDescription")]); return; }
+    if (!jobs.length && (!settings.youtubeEnabled || youtubeAvailable)) notify(t("unchanged"), [t("unchangedDescription")]);
     const results = await Promise.all(jobs);
-    if (results.every(Boolean)) { state.allDirty = !settings.twitchEnabled || !settings.youtubeEnabled; initializeEditor(); }
+    if (results.every(Boolean)) {
+      const preserved = (["twitch", "youtube"] as Platform[]).filter(platform => !platformAvailable(platform));
+      const pending = preserved.some(platform => {
+        const current = stream[platform];
+        const category = platform === "twitch" ? form.twitchCategory : form.youtubeCategory;
+        const tags = platform === "twitch" ? form.twitchTags : form.youtubeTags;
+        const query = platform === "twitch" ? form.twitchCategoryQuery : form.youtubeCategoryQuery;
+        return inlineTitle(platform, form) !== current.title || (category !== null && category.id !== current.categoryId) || !tagsEqual(tags, asStringArray(current.tags)) || query.trim().length > 0;
+      }) || Boolean(form.twitchTagDraft.trim() || form.youtubeTagDraft.trim());
+      initializeEditor(preserved);
+      state.allDirty = pending;
+      state.allSaveResult = pending ? "partial" : "saved";
+    }
   } finally {
     state.allSaving = false;
     render();
@@ -1150,7 +1167,7 @@ async function saveAll(): Promise<void> {
 function addTag(scope: string): void {
   const holder = getTagHolder(scope);
   if (!holder) return;
-  state.allDirty = true;
+  state.allDirty = true; state.allSaveResult = null;
   const value = holder.draft.trim();
   if (!value) return;
   if (!holder.tags.some((tag) => tag.localeCompare(value, locale, { sensitivity: "accent" }) === 0)) holder.tags.push(value);
@@ -1169,7 +1186,7 @@ function chooseCategory(kind: Platform, scope: string, id: string): void {
   if (!category) return;
   if (scope === "all-twitch" && state.allForm && kind === "twitch") { state.allForm.twitchCategory = category as TwitchCategory; state.allForm.twitchCategoryQuery = ""; }
   if (scope === "all-youtube" && state.allForm && kind === "youtube") { state.allForm.youtubeCategory = category as YouTubeCategory; state.allForm.youtubeCategoryQuery = ""; }
-  state.allDirty = true;
+  state.allDirty = true; state.allSaveResult = null;
   activeCategory[kind] = null;
   if (kind === "twitch") resetCategorySearch();
   render();
@@ -1253,27 +1270,28 @@ function updateInput(target: HTMLInputElement | HTMLTextAreaElement): void {
         state.allForm.subtitle = target.value;
         if (settings.twitchEnabled) state.allForm.twitchTitleMode = "subtitle";
         if (settings.youtubeEnabled) state.allForm.youtubeTitleMode = "subtitle";
-        state.allDirty = true;
+        state.allDirty = true; state.allSaveResult = null;
       }
       break;
     case "inline-title":
       if (state.allForm) {
         if (target.dataset.kind === "twitch") state.allForm.twitchTitle = target.value;
         else state.allForm.youtubeTitle = target.value;
-        state.allDirty = true;
+        state.allDirty = true; state.allSaveResult = null;
       }
       break;
-    case "tag-draft": { state.allDirty = true; const holder = getTagHolder(scope); if (holder) holder.setDraft(target.value); break; }
+    case "tag-draft": { state.allDirty = true; state.allSaveResult = null; const holder = getTagHolder(scope); if (holder) holder.setDraft(target.value); break; }
     case "category-query": {
       const previous = target.dataset.kind === "twitch" ? state.allForm?.twitchCategoryQuery : state.allForm?.youtubeCategoryQuery;
       // Browsers emit change on blur after input. Do not erase the option
       // under the pointer or restart an identical search before its click.
       if (previous === target.value) return;
-      state.allDirty = true;
+      state.allDirty = true; state.allSaveResult = null;
       const kind = target.dataset.kind as Platform;
       if (scope === "all-twitch" && state.allForm) state.allForm.twitchCategoryQuery = target.value;
       if (scope === "all-youtube" && state.allForm) state.allForm.youtubeCategoryQuery = target.value;
       activeCategory[kind] = null;
+      updateApplyValidation();
       if (composingCategory === target) return;
       if (kind === "twitch") scheduleTwitchSearch(target.value); else renderCategoryResults("youtube");
       return;
@@ -1426,7 +1444,7 @@ app.addEventListener("keydown", (event) => {
   if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addTag(scope); }
   if (event.key === "Backspace" && !target.value) {
     const holder = getTagHolder(scope);
-    if (holder?.tags.length) { holder.tags.pop(); state.allDirty = true; render(); }
+    if (holder?.tags.length) { holder.tags.pop(); state.allDirty = true; state.allSaveResult = null; render(); }
   }
 });
 
@@ -1456,11 +1474,11 @@ app.addEventListener("click", (event) => {
         const mode = target.dataset.mode === "subtitle" ? "subtitle" : "full";
         if (target.dataset.platform === "twitch") state.allForm.twitchTitleMode = mode;
         else state.allForm.youtubeTitleMode = mode;
-        state.allDirty = true;
+        state.allDirty = true; state.allSaveResult = null;
         render();
       }
       break;
-    case "remove-tag": { const holder = getTagHolder(target.dataset.scope ?? ""); const index = Number(target.dataset.index); if (holder && Number.isInteger(index)) { holder.tags.splice(index, 1); state.allDirty = true; render(); } break; }
+    case "remove-tag": { const holder = getTagHolder(target.dataset.scope ?? ""); const index = Number(target.dataset.index); if (holder && Number.isInteger(index)) { holder.tags.splice(index, 1); state.allDirty = true; state.allSaveResult = null; render(); } break; }
     case "choose-category": chooseCategory(target.dataset.kind as Platform, target.dataset.scope ?? "", target.dataset.id ?? ""); break;
     case "retry-category-search":
       if (failedSearch && !twitchSearching) { searchError = null; twitchSearching = true; renderCategoryResults("twitch"); void runSearch(failedSearch); }

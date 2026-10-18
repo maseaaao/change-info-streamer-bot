@@ -772,6 +772,63 @@ describe("Stream Info HTML actions", () => {
     expect(document.querySelector(".cards")?.nextElementSibling?.classList.contains("save-panel")).toBe(true);
   });
 
+  it("announces edits immediately, confirms saving and clears confirmation on the next edit", async () => {
+    await boot();
+    expect(document.querySelector(".save-status")?.textContent).toBe("Данные загружены");
+    setValue('[data-input="main-subtitle"]', "Новый эфир");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+    click("save-all");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Сохраняем…");
+    await flush();
+    expect(document.querySelector(".save-status")?.textContent).toBe("Изменения применены");
+    click("remove-tag");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+  });
+
+  it("announces unsaved category searches without replacing the focused search input", async () => {
+    await boot();
+    const input = setValue('[data-input="category-query"][data-kind="twitch"]', "PUBG");
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+    expect(document.querySelector('[data-input="category-query"][data-kind="twitch"]')).toBe(input);
+  });
+
+  it("preserves the unavailable YouTube draft and does not announce complete success", async () => {
+    mockStreamerbot.state.youtube.broadcastId = "";
+    await boot();
+    setValue('[data-input="main-subtitle"]', "Эфир Twitch");
+    click("save-all");
+    await flush();
+    expect(document.querySelector(".save-status")?.textContent).toContain("Остались несохранённые изменения");
+    mockStreamerbot.state.youtube.broadcastId = "video-restored";
+    click("refresh-state");
+    await flush();
+    expect(document.querySelector('[data-platform="youtube"]')?.textContent).toContain("Эфир Twitch");
+  });
+
+  it("keeps the pending status when a platform rejects the update", async () => {
+    await boot();
+    const client = mockStreamerbot.instances[0];
+    const original = client.doAction.bind(client);
+    vi.spyOn(client, "doAction").mockImplementation(async (action, args) => {
+      if (args?.command === "updateTwitch") throw new Error("Update rejected");
+      return original(action, args);
+    });
+    setValue('[data-input="main-subtitle"]', "Не сохранится");
+    click("save-all");
+    await flush();
+    expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
+    expect(document.querySelector(".notices")?.textContent).toContain("Update rejected");
+  });
+
+  it("keeps unsent tag text and pending status after applying other fields", async () => {
+    await boot();
+    setValue('[data-input="tag-draft"][data-scope="all-twitch"]', "Draft");
+    click("save-all");
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('[data-input="tag-draft"][data-scope="all-twitch"]')?.value).toBe("Draft");
+    expect(document.querySelector(".save-status")?.textContent).toContain("Остались несохранённые изменения");
+  });
+
   it("edits titles, categories and tags inline and applies them through mocks", async () => {
     await boot();
     setValue('[data-input="tag-draft"][data-scope="all-twitch"]', "Rust");

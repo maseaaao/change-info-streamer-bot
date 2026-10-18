@@ -33,9 +33,12 @@ Automatic mode is the default. CSS `prefers-color-scheme` handles live system
 changes. An explicit `data-theme` overrides it; returning to Auto removes the
 attribute and saved value. A small head script restores the saved preference
 before the stylesheet paints. Storage denial does not prevent manual selection.
-The compact three-icon group (monitor / sun / moon) exposes localized tooltips,
-accessible names and one `aria-pressed` selection. Each button has a 44px target,
-keyboard activation and visible focus. No runtime dependencies were added.
+One 44px native `details`/`summary` trigger shows the current preference icon.
+It opens a compact dropdown with three labeled choices and a checkmark on the
+active `aria-pressed` option. Native keyboard activation and expanded semantics
+are retained. Choosing an option or pressing Escape closes the menu and returns
+focus to the trigger. Clicking or tabbing outside closes it without stealing focus.
+All menu choices have a 44px target and visible focus. No dependencies were added.
 
 ## Validation
 
@@ -58,3 +61,8 @@ The saturated dark action fill retains 7.40:1 label contrast (AAA normal text);
 hover retains 6.03:1. Foreground blue is intentionally separate: 5.60:1 on the main
 surface, 5.02:1 on raised cards and 5.01:1 on the tinted hover/chip surface.
 Small text remains AA; main and secondary text colors are unchanged.
+
+The dropdown remains within the viewport at 320px. Site docs align their menu
+to the left; the landing and Checker align it to the right. The dock positions it
+within the header and retains open state and keyboard focus through background
+refreshes. Previews named `theme-menu-*.png` show the expanded control.

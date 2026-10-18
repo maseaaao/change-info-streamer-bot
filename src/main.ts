@@ -324,12 +324,15 @@ function renderHeader(): string {
   return `<header class="topbar">
     <div class="header-actions">
       <span class="connection connection-${state.connection}"><i></i>${escapeHtml(connectionText())}</span>
-      <div class="theme-control" role="group" aria-label="${t("theme")}">
-        ${["auto", "light", "dark"].map(theme => {
-          const label = t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto");
-          return `<button type="button" class="theme-choice" data-theme-value="${theme}" aria-label="${label}" title="${label}" aria-pressed="${(document.documentElement.dataset.theme ?? "auto") === theme}">${uiIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor")}</button>`;
-        }).join("")}
-      </div>
+      <details class="theme-control">
+        <summary class="theme-trigger" title="${t("theme")}" aria-label="${t("theme")}: ${t(document.documentElement.dataset.theme === "light" ? "themeLight" : document.documentElement.dataset.theme === "dark" ? "themeDark" : "themeAuto")}">${uiIcon(document.documentElement.dataset.theme === "light" ? "sun" : document.documentElement.dataset.theme === "dark" ? "moon" : "monitor")}</summary>
+        <div class="theme-menu" role="group" aria-label="${t("theme")}">
+          ${["auto", "light", "dark"].map(theme => {
+            const label = t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto");
+            return `<button type="button" class="theme-choice" data-theme-value="${theme}" aria-label="${label}" aria-pressed="${(document.documentElement.dataset.theme ?? "auto") === theme}">${uiIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor")}<span>${label}</span><svg class="theme-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4 10-10"/></svg></button>`;
+          }).join("")}
+        </div>
+      </details>
       ${iconButton("refresh-state", t("refresh"), renderIcon("refresh"), state.connection !== "connected")}
       ${iconButton("open-settings", t("settings"), renderIcon("settings"))}
     </div>
@@ -639,6 +642,8 @@ function render(): void {
   if (!app.isConnected) return;
   if (composingCategory) { deferredRender = true; return; }
   const themeFocus = document.activeElement instanceof HTMLButtonElement ? document.activeElement.dataset.themeValue : undefined;
+  const themeTriggerFocused = document.activeElement?.matches(".theme-trigger") ?? false;
+  const themeOpen = app.querySelector<HTMLDetailsElement>(".theme-control")?.open ?? false;
   const focus = focusedField();
   const optionFocus = focusedCategoryOption();
   const dialogActionFocus = focusedDialogAction();
@@ -656,6 +661,9 @@ function render(): void {
     next.replaceWith(old);
   }
   restoreCategoryOption(optionFocus);
+  const themeControl = app.querySelector<HTMLDetailsElement>(".theme-control");
+  if (themeControl) themeControl.open = themeOpen && !state.modal;
+  if (themeTriggerFocused && !state.modal) themeControl?.querySelector<HTMLElement>("summary")?.focus();
   if (themeFocus && !state.modal) app.querySelector<HTMLElement>(`[data-theme-value="${themeFocus}"]`)?.focus();
   if (state.modal) {
     for (const child of Array.from(app.children)) if (!child.classList.contains("modal-backdrop")) child.setAttribute("inert", "");
@@ -1308,12 +1316,26 @@ app.addEventListener("input", (event) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
 });
 
+function syncThemeControl(): void {
+  const theme = document.documentElement.dataset.theme ?? "auto";
+  app.querySelectorAll<HTMLElement>("[data-theme-value]").forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.themeValue === theme)); });
+  const trigger = app.querySelector(".theme-trigger");
+  if (!trigger) return;
+  trigger.innerHTML = uiIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor");
+  trigger.setAttribute("aria-label", `${t("theme")}: ${t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto")}`);
+}
+
 function setTheme(target: HTMLButtonElement): void {
   const theme = target.dataset.themeValue;
   if (theme !== "auto" && theme !== "light" && theme !== "dark") return;
   if (theme === "auto") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
-  app.querySelectorAll<HTMLElement>("[data-theme-value]").forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.themeValue === theme)); });
+  syncThemeControl();
+  const control = target.closest(".theme-control");
+  if (control instanceof HTMLDetailsElement) {
+    control.open = false;
+    control.querySelector("summary")?.focus();
+  }
   try {
     if (theme === "auto") localStorage.removeItem("stream-info.theme.v1");
     else localStorage.setItem("stream-info.theme.v1", theme);
@@ -1330,8 +1352,24 @@ window.addEventListener("storage", event => {
   const theme = event.newValue;
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
-  const selected = document.documentElement.dataset.theme ?? "auto";
-  app.querySelectorAll<HTMLElement>("[data-theme-value]").forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.themeValue === selected)); });
+  syncThemeControl();
+});
+
+document.addEventListener("click", event => {
+  const control = app.querySelector<HTMLDetailsElement>(".theme-control[open]");
+  if (control && event.target instanceof Node && !control.contains(event.target)) control.open = false;
+});
+document.addEventListener("focusin", event => {
+  const control = app.querySelector<HTMLDetailsElement>(".theme-control[open]");
+  if (control && event.target instanceof Node && !control.contains(event.target)) control.open = false;
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  const control = app.querySelector<HTMLDetailsElement>(".theme-control[open]");
+  if (!control) return;
+  control.open = false;
+  control.querySelector("summary")?.focus();
+  event.preventDefault();
 });
 
 app.addEventListener("keydown", (event) => {

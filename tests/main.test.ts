@@ -886,10 +886,10 @@ describe("Stream Info HTML actions", () => {
     expect(document.querySelector('[data-input="main-subtitle"]')).toBe(input);
     expect(input.value).toBe('Unsaved theme check');
     expect(commands()).toEqual(before);
-    button.focus();
+    document.querySelector<HTMLElement>(".theme-trigger")?.focus();
     click('refresh-state');
     await flush();
-    expect(document.activeElement).toBe(document.querySelector('[data-theme-value="dark"]'));
+    expect(document.activeElement).toBe(document.querySelector('.theme-trigger'));
     click('open-settings');
     click('close-modal');
     expect(document.querySelector('[data-theme-value="dark"]')?.getAttribute('aria-pressed')).toBe('true');
@@ -898,6 +898,28 @@ describe("Stream Info HTML actions", () => {
     restored.click();
     expect(document.documentElement.dataset.theme).toBeUndefined();
     expect(localStorage.getItem('stream-info.theme.v1')).toBeNull();
+  });
+
+  it("retains an open theme menu through background refresh and closes it on Escape or outside click", async () => {
+    await boot();
+    const control = document.querySelector('.theme-control');
+    if (!(control instanceof HTMLDetailsElement)) throw new Error('Theme control missing');
+    control.open = true;
+    document.querySelector<HTMLElement>('[data-theme-value="light"]')?.focus();
+    const before = commands().filter(command => command === 'getState').length;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush();
+    expect(commands().filter(command => command === 'getState').length).toBeGreaterThan(before);
+    expect(document.querySelector<HTMLDetailsElement>('.theme-control')?.open).toBe(true);
+    expect(document.activeElement).toBe(document.querySelector('[data-theme-value="light"]'));
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    expect(document.querySelector<HTMLDetailsElement>('.theme-control')?.open).toBe(false);
+    expect(document.activeElement).toBe(document.querySelector('.theme-trigger'));
+    const restored = document.querySelector('.theme-control');
+    if (!(restored instanceof HTMLDetailsElement)) throw new Error('Theme control missing');
+    restored.open = true;
+    document.body.click();
+    expect(restored.open).toBe(false);
   });
 
 });

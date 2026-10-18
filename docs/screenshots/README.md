@@ -36,3 +36,6 @@ light/dark system preferences in Chromium 153. Site previews: 390/1440px with
 isolated offline Twitch and manually collapsed chat. Dock: 390/1200px in demo
 mode; `settings-light.png` and `settings-dark.png` show the settings dialog.
 See `../themes.md` for palette, measured contrast and behavior.
+
+`theme-menu-{light,dark}-{width}.png` shows the single-button dropdown expanded
+at desktop and 320px widths; the standard comparison screenshots show it closed.

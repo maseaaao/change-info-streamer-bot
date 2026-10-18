@@ -818,6 +818,7 @@ describe("Stream Info HTML actions", () => {
     await flush();
     expect(document.querySelector(".save-status")?.textContent).toBe("Есть несохранённые изменения");
     expect(document.querySelector(".notices")?.textContent).toContain("Update rejected");
+    expect(document.querySelector('.notice--error[role="alert"] .icon-error')).not.toBeNull();
   });
 
   it("keeps unsent tag text and pending status after applying other fields", async () => {
@@ -827,6 +828,27 @@ describe("Stream Info HTML actions", () => {
     await flush();
     expect(document.querySelector<HTMLInputElement>('[data-input="tag-draft"][data-scope="all-twitch"]')?.value).toBe("Draft");
     expect(document.querySelector(".save-status")?.textContent).toContain("Остались несохранённые изменения");
+  });
+
+  it("renders unchanged as information and skipped YouTube as a warning", async () => {
+    await boot();
+    click("title-mode", 1);
+    click("title-mode", 3);
+    click("save-all");
+    await flush();
+    const info = document.querySelector(".notice--info");
+    expect(info?.textContent).toContain("Нет изменений");
+    expect(info?.getAttribute("role")).toBe("status");
+    expect(info?.querySelector(".icon-info")).not.toBeNull();
+    mockStreamerbot.state.youtube.broadcastId = "";
+    click("refresh-state");
+    await flush();
+    setValue('[data-input="main-subtitle"]', "Эфир");
+    click("save-all");
+    await flush();
+    const warning = document.querySelector(".notice--warning");
+    expect(warning?.textContent).toContain("YouTube");
+    expect(warning?.querySelector(".icon-warning")).not.toBeNull();
   });
 
   it("edits titles, categories and tags inline and applies them through mocks", async () => {

@@ -260,11 +260,17 @@ mark { padding: 1px 2px; border-radius: 3px; }
 .check-row { display: flex; min-height: 44px; align-items: center; gap: 10px; cursor: pointer; }
 .check-row input { width: 20px; height: 20px; min-height: 20px; padding: 0; accent-color: var(--action); }
 .notices { position: fixed; z-index: 20; right: 16px; bottom: 16px; display: grid; width: min(380px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; gap: 8px; }
-.notice { justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--danger); border-radius: 12px; color: var(--danger); background: var(--danger-soft); overflow-wrap: anywhere; }
+.notice { --notice-color: var(--accent); --notice-background: var(--accent-soft); justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--notice-color); border-radius: 12px; color: var(--notice-color); background: var(--notice-background); overflow-wrap: anywhere; }
+.notice--warning { --notice-color: var(--warning); --notice-background: var(--warning-soft); }
+.notice--error { --notice-color: var(--danger); --notice-background: var(--danger-soft); }
+.notice--success { --notice-color: var(--success); --notice-background: var(--success-soft); }
+.notice > .icon { flex: none; margin-top: 2px; }
+.notice > div { flex: 1; }
+.notices:has(.notice) { bottom: max(16px, env(safe-area-inset-bottom)); }
 .notice > div { min-width: 0; }
 .notice strong { font-size: 1rem; }
 .notice p { margin: 6px 0 0; }
-.notice .icon-button { color: var(--danger); }
+.notice .icon-button { color: inherit; }
 @media (max-width: 1050px) { .subtitle-grid { grid-template-columns: minmax(0, 1fr) auto auto; } .subtitle-field { grid-column: 1 / -1; } }
 @media (max-width: 820px) { .cards { grid-template-columns: 1fr; } .content { width: calc(100% - 32px); margin-top: 16px; } .auth-panel { width: calc(100% - 32px); grid-template-columns: 1fr; } .subtitle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .save-panel { position: sticky; z-index: 5; bottom: 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); } .save-actions { flex-wrap: wrap; } .save-status { flex-basis: 100%; } .save-actions .button { width: 100%; } }
 @media (max-width: 540px) { .topbar { padding: 8px 12px; } .connection { font-size: .86rem; } .content { width: calc(100% - 24px); margin: 12px auto; } .cards { gap: 12px; } .platform-card, .subtitle-panel, .preset-panel { padding: 16px; border-radius: 12px; } .platform-card.card-success, .platform-card.card-error, .platform-card.card-flash-error { padding: 15px; } .subtitle-grid { gap: 12px; } .card-body { gap: 16px; } .subtitle-top { margin-bottom: 12px; } .presets-below { margin-top: 12px; } .template-grid, .template-preview-grid, .settings-grid { grid-template-columns: 1fr; } .modal-backdrop { padding: 8px; } .modal { max-height: calc(100dvh - 16px); border-radius: 12px; } .modal-header, .modal-footer, .modal-body { padding: 16px; } .mode-toggle { width: 100%; } .mode-toggle button { padding-inline: 8px; } .template-actions > .button { flex: 1; } }

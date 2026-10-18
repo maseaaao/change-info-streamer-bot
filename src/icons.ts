@@ -1,3 +1,6 @@
+import info from "lucide-static/icons/info.svg?raw";
+import error from "lucide-static/icons/circle-x.svg?raw";
+import check from "lucide-static/icons/circle-check.svg?raw";
 import braces from "lucide-static/icons/braces.svg?raw";
 import car from "lucide-static/icons/car-front.svg?raw";
 import chevronDown from "lucide-static/icons/chevron-down.svg?raw";
@@ -28,6 +31,9 @@ import twitch from "simple-icons/icons/twitch.svg?raw";
 import youtube from "simple-icons/icons/youtube.svg?raw";
 
 const uiSources = {
+  info,
+  error,
+  check,
   braces,
   car,
   chevronDown,

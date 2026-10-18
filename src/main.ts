@@ -36,10 +36,13 @@ type ActionStatus = "unknown" | "ready" | "missing" | "disabled" | "outdated";
 type Modal = "settings" | null;
 type CardEffect = "success" | "flash-error" | null;
 
+type NoticeKind = "info" | "warning" | "error" | "success";
+
 interface Notice {
   id: string;
   title: string;
   lines: string[];
+  kind: NoticeKind;
 }
 
 interface TemplateDraft {
@@ -284,8 +287,8 @@ function saveSettings(): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
 }
 
-function notify(title: string, lines: string[]): void {
-  state.notices.unshift({ id: uuid(), title, lines });
+function notify(title: string, lines: string[], kind: NoticeKind = "error"): void {
+  state.notices.unshift({ id: uuid(), title, lines, kind });
   render();
 }
 
@@ -618,7 +621,7 @@ function settingsModal(): string {
 }
 
 function noticesHtml(): string {
-  return `<div class="notices">${state.notices.map((notice) => `<aside class="notice"><div><strong>${escapeHtml(notice.title)}</strong>${notice.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</div>${iconButton("close-notice", t("closeNotice"), renderIcon("close"), false, ` data-notice-id="${notice.id}"`)}</aside>`).join("")}</div>`;
+  return `<div class="notices">${state.notices.map((notice) => `<aside class="notice notice--${notice.kind}" role="${notice.kind === "error" ? "alert" : "status"}">${uiIcon(notice.kind === "error" ? "error" : notice.kind === "warning" ? "warning" : notice.kind === "success" ? "check" : "info")}<div><strong>${escapeHtml(notice.title)}</strong>${notice.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</div>${iconButton("close-notice", t("closeNotice"), renderIcon("close"), false, ` data-notice-id="${notice.id}"`)}</aside>`).join("")}</div>`;
 }
 
 function focusedField(): { input: string; scope: string; start: number | null; end: number | null } | null {
@@ -908,7 +911,7 @@ async function saveTemplates(): Promise<void> {
     const templates = normalizeTemplates(response.data.templates);
     const editedWhileSaving = state.templateDraft.twitchTemplate !== draft.twitchTemplate || state.templateDraft.youtubeTemplate !== draft.youtubeTemplate;
     syncTemplates({ ...templates, configured: true }, editedWhileSaving);
-    notify(t("templateSaved"), [t("templateSavedDescription")]);
+    notify(t("templateSaved"), [t("templateSavedDescription")], "success");
   } catch (error) {
     notify(t("templateSaveFailed"), [error instanceof Error ? error.message : t("unknownError")]);
   } finally {
@@ -945,7 +948,7 @@ async function runPreset(id: string, name: string): Promise<void> {
   try {
     await client.doAction({ id }, {});
     window.setTimeout(() => { void refreshState(false); }, 700);
-    notify(t("presetStarted"), [name]);
+    notify(t("presetStarted"), [name], "info");
   } catch (error) {
     notify(t("presetStartFailed"), [error instanceof Error ? error.message : t("unknownError")]);
   } finally {
@@ -1142,8 +1145,8 @@ async function saveAll(): Promise<void> {
     const jobs: Promise<boolean>[] = [];
     if (Object.keys(twitchPayload).length) jobs.push(updatePlatform("twitch", twitchPayload));
     if (youtubeAvailable && Object.keys(youtubePayload).length) jobs.push(updatePlatform("youtube", youtubePayload));
-    if (settings.youtubeEnabled && !youtubeAvailable) notify(t("youtubeSkipped"), [t("youtubeNotStarted")]);
-    if (!jobs.length && (!settings.youtubeEnabled || youtubeAvailable)) notify(t("unchanged"), [t("unchangedDescription")]);
+    if (settings.youtubeEnabled && !youtubeAvailable) notify(t("youtubeSkipped"), [t("youtubeNotStarted")], "warning");
+    if (!jobs.length && (!settings.youtubeEnabled || youtubeAvailable)) notify(t("unchanged"), [t("unchangedDescription")], "info");
     const results = await Promise.all(jobs);
     if (results.every(Boolean)) {
       const preserved = (["twitch", "youtube"] as Platform[]).filter(platform => !platformAvailable(platform));

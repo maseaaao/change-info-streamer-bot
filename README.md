@@ -2,6 +2,19 @@
 
 [Русская версия](README.ru.md)
 
+> [!IMPORTANT]
+> **Stream Info has moved to [maseaaao.tv](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info).** Development, fixes and new releases continue there. This repository is retained for historical versions; archiving it does not update an installed OBS dock.
+
+- [Current source and documentation](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info) · [Installation and updates](https://github.com/maseaaao/maseaaao.tv/blob/main/docs/local-installation.md)
+- [Standalone HTML in four languages](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info/dist) · [Streamer.bot import](https://github.com/maseaaao/maseaaao.tv/blob/main/apps/stream-info/streamerbot-import.txt)
+- [New releases](https://github.com/maseaaao/maseaaao.tv/releases) use `stream-info-vX.Y.Z` tags; the shared `releases/latest` also includes other products.
+- [Questions and bugs](https://github.com/maseaaao/maseaaao.tv/issues) · [Contributions](https://github.com/maseaaao/maseaaao.tv/pulls)
+- [Previous releases](https://github.com/maseaaao/change-info-streamer-bot/releases) remain in this repository.
+
+## Historical documentation
+
+The instructions and screenshots below describe the former standalone repository. Use the links above for the current version.
+
 One self-contained HTML control surface for updating Twitch stream metadata from an OBS dock. It connects only to Streamer.bot’s local WebSocket; there is no hosted service, OAuth page, or external UI dependency.
 
 ![English dashboard showcase](docs/screenshots/dashboard-en.png)
@@ -113,9 +126,9 @@ npm run build
 
 The test suite requires Node.js and the .NET 8 SDK. `npm run build` regenerates the native Streamer.bot import, checks TypeScript, and emits all four single-file HTML variants. `dist/` is committed because it is the distributable product; include its refreshed files whenever a change affects the build.
 
-## Releases
+## Historical releases
 
-Pushing a tag named `v*` creates a GitHub Release containing each HTML file from `dist/` and a ZIP archive of the complete distribution. End users can download the language they need without installing Node.js or building the project.
+This repository no longer publishes new versions. Existing artifacts remain in [previous releases](https://github.com/maseaaao/change-info-streamer-bot/releases). Find new Stream Info releases in [maseaaao.tv](https://github.com/maseaaao/maseaaao.tv/releases) under `stream-info-vX.Y.Z` tags.
 
 ## Security and support
 

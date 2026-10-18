@@ -2,6 +2,19 @@
 
 [English version](README.md)
 
+> [!IMPORTANT]
+> **Stream Info переехал в [maseaaao.tv](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info).** Разработка, исправления и новые выпуски ведутся там. Этот репозиторий сохраняется для истории; архивирование не обновляет установленный док OBS.
+
+- [Актуальный код и документация](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info) · [Установка и обновление](https://github.com/maseaaao/maseaaao.tv/blob/main/docs/local-installation.md)
+- [Готовые HTML на четырёх языках](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info/dist) · [Импорт Streamer.bot](https://github.com/maseaaao/maseaaao.tv/blob/main/apps/stream-info/streamerbot-import.txt)
+- [Новые выпуски](https://github.com/maseaaao/maseaaao.tv/releases) — теги `stream-info-vX.Y.Z`; общий `releases/latest` включает разные продукты.
+- [Вопросы и ошибки](https://github.com/maseaaao/maseaaao.tv/issues) · [Предложения изменений](https://github.com/maseaaao/maseaaao.tv/pulls)
+- [Прежние выпуски](https://github.com/maseaaao/change-info-streamer-bot/releases) остаются в этом репозитории.
+
+## Архивная документация
+
+Инструкции и снимки ниже относятся к прежнему самостоятельному репозиторию. Для текущей версии используйте ссылки выше.
+
 Самодостаточная HTML-панель для обновления информации Twitch прямо из OBS Dock. Она подключается только к локальному WebSocket Streamer.bot: без сервера, OAuth-страницы и внешних UI-зависимостей.
 
 ![Демонстрация русской панели](docs/screenshots/dashboard-ru.png)

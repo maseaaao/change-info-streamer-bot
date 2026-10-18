@@ -1,3 +1,7 @@
+> **Проект переехал в [maseaaao.tv](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info).** Создавайте Issues и PR в [новом репозитории](https://github.com/maseaaao/maseaaao.tv); команды сборки приведены в его [README](https://github.com/maseaaao/maseaaao.tv#readme).
+>
+> Ниже сохранена историческая документация.
+
 # Участие в проекте
 
 [English version](CONTRIBUTING.md)

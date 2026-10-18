@@ -1,3 +1,7 @@
+> **Проект переехал в [maseaaao.tv](https://github.com/maseaaao/maseaaao.tv/tree/main/apps/stream-info).** Для актуального порядка приватного сообщения об уязвимости см. [действующую политику](https://github.com/maseaaao/maseaaao.tv/blob/main/apps/stream-info/SECURITY.ru.md). Исправления старой самостоятельной версии здесь больше не выпускаются.
+>
+> Ниже сохранена историческая документация.
+
 # Политика безопасности
 
 [English version](SECURITY.md)
@@ -6,4 +10,4 @@
 
 Не присылайте Twitch OAuth-токены, пароль WebSocket Streamer.bot, ID приватного канала или полный Import-экспорт с учётными данными. HTML-интерфейс спроектирован так, чтобы не получать Twitch OAuth-данные.
 
-Исправления безопасности поддерживаются для актуальной ветки `main` и текущего сгенерированного `change-info-streamer-bot.html`.
+Поддерживаемая версия и исправления безопасности теперь находятся в `maseaaao/maseaaao.tv`, в каталоге `apps/stream-info`.

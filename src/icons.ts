@@ -11,6 +11,9 @@ import film from "lucide-static/icons/clapperboard.svg?raw";
 import game from "lucide-static/icons/gamepad-2.svg?raw";
 import heart from "lucide-static/icons/heart.svg?raw";
 import imageOff from "lucide-static/icons/image-off.svg?raw";
+import monitor from "lucide-static/icons/monitor.svg?raw";
+import sun from "lucide-static/icons/sun.svg?raw";
+import moon from "lucide-static/icons/moon.svg?raw";
 import music from "lucide-static/icons/music-2.svg?raw";
 import news from "lucide-static/icons/newspaper.svg?raw";
 import people from "lucide-static/icons/users-round.svg?raw";
@@ -39,6 +42,9 @@ const uiSources = {
   heart,
   imageOff,
   music,
+  monitor,
+  sun,
+  moon,
   news,
   people,
   play,

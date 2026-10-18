@@ -324,11 +324,12 @@ function renderHeader(): string {
   return `<header class="topbar">
     <div class="header-actions">
       <span class="connection connection-${state.connection}"><i></i>${escapeHtml(connectionText())}</span>
-      <label class="theme-control"><span class="sr-only">${t("theme")}</span>
-        <select data-theme-select aria-label="${t("theme")}">
-          ${["auto", "light", "dark"].map(theme => `<option value="${theme}"${(document.documentElement.dataset.theme ?? "auto") === theme ? " selected" : ""}>${t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto")}</option>`).join("")}
-        </select>
-      </label>
+      <div class="theme-control" role="group" aria-label="${t("theme")}">
+        ${["auto", "light", "dark"].map(theme => {
+          const label = t(theme === "light" ? "themeLight" : theme === "dark" ? "themeDark" : "themeAuto");
+          return `<button type="button" class="theme-choice" data-theme-value="${theme}" aria-label="${label}" title="${label}" aria-pressed="${(document.documentElement.dataset.theme ?? "auto") === theme}">${uiIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor")}</button>`;
+        }).join("")}
+      </div>
       ${iconButton("refresh-state", t("refresh"), renderIcon("refresh"), state.connection !== "connected")}
       ${iconButton("open-settings", t("settings"), renderIcon("settings"))}
     </div>
@@ -637,7 +638,7 @@ function restoreCategoryOption(focus: ReturnType<typeof focusedCategoryOption>):
 function render(): void {
   if (!app.isConnected) return;
   if (composingCategory) { deferredRender = true; return; }
-  const themeFocused = document.activeElement instanceof HTMLSelectElement && document.activeElement.matches("[data-theme-select]");
+  const themeFocus = document.activeElement instanceof HTMLButtonElement ? document.activeElement.dataset.themeValue : undefined;
   const focus = focusedField();
   const optionFocus = focusedCategoryOption();
   const dialogActionFocus = focusedDialogAction();
@@ -655,7 +656,7 @@ function render(): void {
     next.replaceWith(old);
   }
   restoreCategoryOption(optionFocus);
-  if (themeFocused && !state.modal) app.querySelector<HTMLElement>("[data-theme-select]")?.focus();
+  if (themeFocus && !state.modal) app.querySelector<HTMLElement>(`[data-theme-value="${themeFocus}"]`)?.focus();
   if (state.modal) {
     for (const child of Array.from(app.children)) if (!child.classList.contains("modal-backdrop")) child.setAttribute("inert", "");
     const dialog = app.querySelector<HTMLElement>('[role="dialog"]');
@@ -1307,18 +1308,20 @@ app.addEventListener("input", (event) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
 });
 
+function setTheme(target: HTMLButtonElement): void {
+  const theme = target.dataset.themeValue;
+  if (theme !== "auto" && theme !== "light" && theme !== "dark") return;
+  if (theme === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  app.querySelectorAll<HTMLElement>("[data-theme-value]").forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.themeValue === theme)); });
+  try {
+    if (theme === "auto") localStorage.removeItem("stream-info.theme.v1");
+    else localStorage.setItem("stream-info.theme.v1", theme);
+  } catch { /* Keep the in-memory choice when storage is unavailable. */ }
+}
+
 app.addEventListener("change", (event) => {
   const target = event.target;
-  if (target instanceof HTMLSelectElement && target.matches("[data-theme-select]")) {
-    const theme = target.value;
-    if (theme !== "auto" && theme !== "light" && theme !== "dark") return;
-    if (theme === "auto") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
-    try {
-      if (theme === "auto") localStorage.removeItem("stream-info.theme.v1");
-      else localStorage.setItem("stream-info.theme.v1", theme);
-    } catch { /* Keep the in-memory choice when storage is unavailable. */ }
-  }
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) updateInput(target);
 });
 
@@ -1327,8 +1330,8 @@ window.addEventListener("storage", event => {
   const theme = event.newValue;
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
-  const select = document.querySelector("[data-theme-select]");
-  if (select instanceof HTMLSelectElement) select.value = document.documentElement.dataset.theme ?? "auto";
+  const selected = document.documentElement.dataset.theme ?? "auto";
+  app.querySelectorAll<HTMLElement>("[data-theme-value]").forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.themeValue === selected)); });
 });
 
 app.addEventListener("keydown", (event) => {
@@ -1385,6 +1388,12 @@ app.addEventListener("keydown", (event) => {
 });
 
 app.addEventListener("click", (event) => {
+  const themeButton = event.target instanceof Element ? event.target.closest("button[data-theme-value]") : null;
+  if (themeButton instanceof HTMLButtonElement) {
+    setTheme(themeButton);
+    return;
+  }
+
   if (event.target instanceof HTMLElement && event.target.classList.contains("modal-backdrop")) { clearModal(); return; }
   const target = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
   if (!target) return;

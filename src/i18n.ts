@@ -5,7 +5,7 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 declare const __STREAM_INFO_LOCALE__: string | undefined;
 
 const ru = {
-  theme: "Цветовая тема", themeAuto: "Авто", themeLight: "Светлая", themeDark: "Тёмная",
+  theme: "Цветовая тема", themeAuto: "Системная тема", themeLight: "Светлая тема", themeDark: "Тёмная тема",
   containerNotFound: "Не найден контейнер приложения.",
   connectionConnected: "Streamer.bot подключён",
   connectionConnecting: "Подключение…",
@@ -134,7 +134,7 @@ const messages: Record<Locale, Translation> = {
     categoryMore: "Show more", categoryResultCount: "Results: {count}", categoryPartial: "Results are incomplete.",
     categorySelectionRequired: "{platform}: select a category from the list or clear the search.",
     categoryRetry: "Retry search",
-    theme: "Color theme", themeAuto: "Auto", themeLight: "Light", themeDark: "Dark",
+    theme: "Color theme", themeAuto: "System theme", themeLight: "Light theme", themeDark: "Dark theme",
     containerNotFound: "Application container was not found.", connectionConnected: "Streamer.bot connected", connectionConnecting: "Connecting…", connectionDisconnected: "Streamer.bot not connected", refresh: "Refresh data", settings: "Settings", enablePlatform: "Update {platform}", platformEnabled: "Enabled", platformDisabled: "Disabled", updateAll: "Update all", authLabel: "Streamer.bot authentication", authFailed: "Could not authenticate with Streamer.bot", authHint: "Enter the WebSocket password and reconnect.", password: "Password", connect: "Connect",
     importOutdated: "The Action version is outdated. Import the current string again.", importDisabled: "Action “{action}” is disabled in Streamer.bot.", importRequired: "Action “{action}” is required.", importEnable: "Enable it in Streamer.bot and select “Check again”.", importSteps: "<ol><li>Open Streamer.bot.</li><li>Select Import.</li><li>Paste the string below.</li><li>Finish the import.</li></ol>", copied: "Copied", copyImport: "Copy Import string", hideImport: "Hide string", showImport: "Show string", checkAgain: "Check again", importAria: "Streamer.bot Import string",
     noTags: "No tags", category: "Category", accountNotConnected: "Account not connected", live: "Live", offline: "Offline", notConnected: "Not connected", notStarted: "Not started", updating: "Updating", title: "Title", tags: "Tags", edit: "Edit", openStream: "Open stream", openDashboard: "Open dashboard", youtubeNotStarted: "A YouTube stream must be running", loading: "Loading Streamer.bot data…", updated: "Updated:", removeTag: "Remove tag {tag}", addTag: "Add tag", categorySearch: "Start typing a name or ID", nothingFound: "Nothing found", categorySearching: "Searching categories…",
@@ -146,7 +146,7 @@ const messages: Record<Locale, Translation> = {
     categoryMore: "Mostrar más", categoryResultCount: "Resultados: {count}", categoryPartial: "Los resultados están incompletos.",
     categorySelectionRequired: "{platform}: selecciona una categoría de la lista o borra la búsqueda.",
     categoryRetry: "Reintentar búsqueda",
-    theme: "Tema de color", themeAuto: "Auto", themeLight: "Claro", themeDark: "Oscuro",
+    theme: "Tema de color", themeAuto: "Tema del sistema", themeLight: "Tema claro", themeDark: "Tema oscuro",
     containerNotFound: "No se encontró el contenedor de la aplicación.", connectionConnected: "Streamer.bot conectado", connectionConnecting: "Conectando…", connectionDisconnected: "Streamer.bot no está conectado", refresh: "Actualizar datos", settings: "Ajustes", enablePlatform: "Actualizar {platform}", platformEnabled: "Activado", platformDisabled: "Desactivado", updateAll: "Actualizar todo", authLabel: "Autenticación de Streamer.bot", authFailed: "No se pudo autenticar en Streamer.bot", authHint: "Introduce la contraseña WebSocket y vuelve a conectar.", password: "Contraseña", connect: "Conectar",
     importOutdated: "La versión de Action está desactualizada. Importa de nuevo la cadena actual.", importDisabled: "La Action «{action}» está desactivada en Streamer.bot.", importRequired: "Se requiere la Action «{action}».", importEnable: "Actívala en Streamer.bot y pulsa «Comprobar de nuevo».", importSteps: "<ol><li>Abre Streamer.bot.</li><li>Selecciona Import.</li><li>Pega la cadena inferior.</li><li>Completa la importación.</li></ol>", copied: "Copiado", copyImport: "Copiar cadena Import", hideImport: "Ocultar cadena", showImport: "Mostrar cadena", checkAgain: "Comprobar de nuevo", importAria: "Cadena Import de Streamer.bot",
     noTags: "Sin etiquetas", category: "Categoría", accountNotConnected: "Cuenta no conectada", live: "En directo", offline: "Fuera de directo", notConnected: "No conectado", notStarted: "No iniciado", updating: "Actualizando", title: "Título", tags: "Etiquetas", edit: "Editar", openStream: "Abrir directo", openDashboard: "Abrir panel", youtubeNotStarted: "Debe haber un directo de YouTube activo", loading: "Cargando datos de Streamer.bot…", updated: "Actualizado:", removeTag: "Eliminar etiqueta {tag}", addTag: "Añadir etiqueta", categorySearch: "Empieza a escribir un nombre o ID", nothingFound: "No se encontró nada", categorySearching: "Buscando categorías…",
@@ -158,7 +158,7 @@ const messages: Record<Locale, Translation> = {
     categoryMore: "显示更多", categoryResultCount: "结果：{count}", categoryPartial: "结果不完整。",
     categorySelectionRequired: "{platform}：请选择列表中的分类或清空搜索。",
     categoryRetry: "重试搜索",
-    theme: "颜色主题", themeAuto: "自动", themeLight: "浅色", themeDark: "深色",
+    theme: "颜色主题", themeAuto: "系统主题", themeLight: "浅色主题", themeDark: "深色主题",
     containerNotFound: "未找到应用容器。", connectionConnected: "Streamer.bot 已连接", connectionConnecting: "正在连接…", connectionDisconnected: "Streamer.bot 未连接", refresh: "刷新数据", settings: "设置", enablePlatform: "更新 {platform}", platformEnabled: "已启用", platformDisabled: "已禁用", updateAll: "全部更新", authLabel: "Streamer.bot 身份验证", authFailed: "无法在 Streamer.bot 中完成验证", authHint: "请输入 WebSocket 密码后重新连接。", password: "密码", connect: "连接",
     importOutdated: "Action 版本已过期。请重新导入当前字符串。", importDisabled: "Streamer.bot 中的 Action「{action}」已禁用。", importRequired: "需要 Action「{action}」才能使用。", importEnable: "请在 Streamer.bot 中启用它，然后点击“重新检查”。", importSteps: "<ol><li>打开 Streamer.bot。</li><li>选择 Import。</li><li>粘贴下面的字符串。</li><li>完成导入。</li></ol>", copied: "已复制", copyImport: "复制 Import 字符串", hideImport: "隐藏字符串", showImport: "显示字符串", checkAgain: "重新检查", importAria: "Streamer.bot Import 字符串",
     noTags: "没有标签", category: "分类", accountNotConnected: "帐户未连接", live: "直播中", offline: "未直播", notConnected: "未连接", notStarted: "未开始", updating: "正在更新", title: "标题", tags: "标签", edit: "编辑", openStream: "打开直播", openDashboard: "打开控制台", youtubeNotStarted: "必须先启动 YouTube 直播", loading: "正在加载 Streamer.bot 数据…", updated: "更新时间：", removeTag: "删除标签 {tag}", addTag: "添加标签", categorySearch: "输入名称或 ID 进行搜索", nothingFound: "未找到结果", categorySearching: "正在搜索分类…",

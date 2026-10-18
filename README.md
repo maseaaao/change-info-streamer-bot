@@ -127,6 +127,8 @@ Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. For con
 
 ## Credits
 
+The main visual design reference is [Hermes Desktop](https://hermes-agent.nousresearch.com/desktop) by Nous Research, which inspired the project's palette, typography, component shapes, and composition.
+
 Thank you to [nutty.gg](https://nutty.gg/) for the idea and inspiration behind the focused streamer control-surface direction.
 
 ## License

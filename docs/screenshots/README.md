@@ -1,41 +1,17 @@
 # Screenshots
 
-The images in this directory are captured from the built-in `?demo=1` mode. They contain sample data only and do not connect to Streamer.bot or a streaming account.
+Captured on October 19, 2026 from the Twitch-only **1.3.2** build in Chromium on Windows. All captures use `?demo=1`: sample data, no Streamer.bot connection or real metadata changes. Desktop viewport: 1200 × 1080; full-page images include content below the viewport. Mobile dashboard width: 390 px; theme menus: 320 and 1200 px. Light/dark preferences were simulated in the browser.
 
-Снимки в этой папке сделаны во встроенном режиме `?demo=1`. В них используются только примерные данные; подключения к Streamer.bot и стриминговым аккаунтам нет.
+Снимки обновлены 19.10.2026 по сборке только для Twitch. Использован деморежим `?demo=1`, без подключения к Streamer.bot и изменения данных стрима. На снимках настроек один шаблон Twitch; на главной одна карточка Twitch. Снимки страницы содержат всю её высоту.
 
-Captured on October 17, 2026 (UTC) from the freshly built **1.3.2** HTML files at a **1200 × 1080** headless Chromium viewport, at 100% text size. Embedded Unbounded was loaded before capture. The Linux capture runtime uses Noto Color Emoji as its system emoji fallback; this font is not bundled with the application. Main-page editors replace the old stream-edit modal.
-
-Обновлено 17.10.2026 (UTC) по свежей сборке **1.3.2** в headless Chromium, размер окна — **1200 × 1080**, текст — 100%. Встроенный Unbounded загружен до съёмки. Для эмодзи среда Linux использует системный Noto Color Emoji; в приложение этот шрифт не добавлен. Редакторы находятся на главной странице; старый снимок модального редактора удалён.
-
-| File / Файл | View / Экран |
+| File | View |
 | --- | --- |
-| `dashboard-ru.png` | Русская главная страница: подзаголовок, платформы, редакторы и пресеты |
-| `dashboard-en.png` | English main page: subtitle, platforms, editors, and presets |
-| `settings-ru.png` | Русские настройки подключения и шаблонов |
-| `settings-en.png` | English connection and template settings |
+| `dashboard-ru.png`, `dashboard-en.png` | Main page in Russian and English |
+| `settings-ru.png`, `settings-en.png` | Connection settings and Twitch template |
+| `dashboard-{light,dark}-{1200,390}.png` | Desktop/mobile theme comparisons |
+| `settings-{light,dark}.png` | Settings theme comparisons |
+| `theme-menu-{light,dark}-{1200,320}.png` | Expanded appearance menu |
 
-The companion browser check covered ru/en/es/zh at widths 320, 390, 540, 820 and 1200 px and heights 900 and 400 px. It checked horizontal page/modal overflow, 44 px button targets, action labels of at least 12 px, modal keyboard trapping/Escape/focus return, and retained subtitle drafts. Each view was also checked with visible text sizes doubled from their computed values; this is a text-enlargement check, not native browser zoom. All external HTTP requests were blocked, with no WebSocket connections. Chinese fallback glyphs were verified using runtime-only Noto Sans CJK SC. These checks do not verify live OBS, Streamer.bot or platform updates.
+Browser checks covered ru/en/es/zh main pages at 320, 390, 820 and 1200 px, and Settings at 320, 390 and 1200 px. Each main page had one platform card, each Settings dialog had one template, with no horizontal overflow. Dashboard and dark Settings captures were visually inspected. These checks do not verify live OBS or Execute Code compilation in Streamer.bot.
 
-## Refresh / Обновление
-
-1. Run `npm run build` from the project root / Выполните `npm run build` из корня проекта.
-2. Run `npm run preview -- --host 127.0.0.1 --port 4176 --strictPort` / Запустите локальный просмотр этой командой.
-3. In a clean browser session, open `http://127.0.0.1:4176/change-info-streamer-bot.ru.html?demo=1` and the equivalent `.en.html?demo=1` URL / В чистой сессии браузера откройте русскую и английскую страницы с `?demo=1`.
-4. Set the viewport to 1200 × 1080, wait for embedded fonts to load, confirm the system can render the sample emoji, and capture the main page / Установите размер 1200 × 1080, дождитесь загрузки встроенных шрифтов и снимите главную страницу.
-5. Open the gear button and capture Settings with all template actions visible / Откройте шестерёнку и снимите настройки так, чтобы были видны кнопки шаблонов.
-6. Check all four images, README links, version, and date; stop the preview server / Проверьте четыре снимка, ссылки README, версию и дату; остановите сервер просмотра.
-
-Never capture working credentials or use live Apply/preset actions for documentation screenshots / Не снимайте рабочие пароли и не применяйте живые изменения или пресеты ради скриншотов.
-
-
-## Theme comparisons
-
-The `*-light-*.png` and `*-dark-*.png` images show the same UI with automatic
-light/dark system preferences in Chromium 153. Site previews: 390/1440px with
-isolated offline Twitch and manually collapsed chat. Dock: 390/1200px in demo
-mode; `settings-light.png` and `settings-dark.png` show the settings dialog.
-See `../themes.md` for palette, measured contrast and behavior.
-
-`theme-menu-{light,dark}-{width}.png` shows the single-button dropdown expanded
-at desktop and 320px widths; the standard comparison screenshots show it closed.
+To refresh, run `npm run build`, start `npm run preview -- --host 127.0.0.1 --port 4176 --strictPort`, and open each localized HTML with `?demo=1`. Capture the main page, Settings and appearance menu in both themes, then stop the preview server. Never capture working credentials or use live Apply/preset actions for documentation screenshots.

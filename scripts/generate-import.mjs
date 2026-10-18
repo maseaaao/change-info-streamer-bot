@@ -7,7 +7,7 @@ const packageMetadata = JSON.parse(readFileSync(resolve(project, "package.json")
 // Collect every helper's imports before all classes; Streamer.bot compiles one
 // combined source, not separate compilation units. Keep helper order explicit.
 const sources = [
-  "action.cs", "state-cache-policy.cs", "automatic-youtube-policy.cs",
+  "action.cs", "state-cache-policy.cs",
   "category-search-policy.cs", "category-search-service.cs", "category-search-transport.cs",
 ].map(name => readFileSync(resolve(project, "streamerbot", name), "utf8"));
 const usings = [...new Set(sources.flatMap(source => source.match(/^using [^;]+;/gm) ?? []))];
@@ -31,16 +31,7 @@ const action = {
   alwaysRun: false,
   randomAction: false,
   concurrent: true,
-  triggers: [
-    {
-      // YouTube -> Broadcast -> Started. The numeric trigger type is the
-      // stable Streamer.bot 1.0.x export representation.
-      id: "5f9a1464-3571-4a20-b5ba-0c350db9c15a",
-      type: 4001,
-      enabled: true,
-      exclusions: [],
-    },
-  ],
+  triggers: [],
   actions: [
     {
       name: "STREAM INFO API router",
@@ -74,7 +65,7 @@ const exported = {
     name: "STREAM INFO | API",
     author: "change-info-streamer-bot",
     version: packageMetadata.version,
-    description: "One Action API for the standalone Stream Info HTML with automatic YouTube metadata on broadcast start.",
+    description: "Twitch API for the standalone Stream Info HTML.",
     autoRunAction: null,
     minimumVersion: MINIMUM_COMPATIBLE_VERSION,
   },

@@ -14,6 +14,5 @@
     <Compile Include="../../streamerbot/category-search-service.cs" Link="CategorySearchService.cs" />
     <Compile Include="../../streamerbot/category-search-policy.cs" Link="CategorySearchPolicy.cs" />
     <Compile Include="../../streamerbot/state-cache-policy.cs" Link="StateCachePolicy.cs" />
-    <Compile Include="../../streamerbot/automatic-youtube-policy.cs" Link="AutomaticYouTubePolicy.cs" />
   </ItemGroup>
 </Project>

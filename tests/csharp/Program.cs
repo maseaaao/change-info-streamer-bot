@@ -23,16 +23,11 @@ public static class Program
             CategoryBackendTests.UnicodeParity();
             CategoryBackendTests.CatalogConfigurationAndPageBounds().GetAwaiter().GetResult();
             CategoryBackendTests.SanitizedHttpFailures().GetAwaiter().GetResult();
-            ExplicitTemplatePolicy();
-            WaitsForLiveThenAppliesOnce();
-            NeverAppliesWhenBroadcastStaysUnavailable();
-            DoesNotRetryACompletedUpdate();
-            DoesNotRetryAThrowingUpdate();
             ReusesStateWithinFiveSeconds();
             RefreshesStateAtFiveSeconds();
             InvalidatesStateImmediately();
             ReturnsIndependentCopies();
-            Console.WriteLine("Streamer.bot policy tests passed (state/YouTube and category backend suites).");
+            Console.WriteLine("Streamer.bot policy tests passed (state cache and category backend suites).");
             return 0;
         }
         catch (Exception ex)
@@ -67,84 +62,6 @@ public static class Program
         Assert(id.Count == 1 && id[0].Id == "1267582829", "Category ID lookup must return the matching category.");
         var empty = TwitchCategorySearchPolicy.Search(" ", path => { throw new Exception("Empty queries must not hit Twitch."); });
         Assert(empty.Count == 0, "Empty queries must return no matches.");
-    }
-
-    private static void ExplicitTemplatePolicy()
-    {
-        Assert(!AutomaticYouTubePolicy.HasExplicitTitleTemplate(null), "A missing template must not overwrite a YouTube title.");
-        Assert(!AutomaticYouTubePolicy.HasExplicitTitleTemplate("   "), "A blank template must not overwrite a YouTube title.");
-        Assert(AutomaticYouTubePolicy.HasExplicitTitleTemplate("Live: %subtitle%"), "An explicit template must be applied.");
-    }
-
-    private static void WaitsForLiveThenAppliesOnce()
-    {
-        int readinessChecks = 0;
-        int waits = 0;
-        int updates = 0;
-        string result = AutomaticYouTubePolicy.RunWhenReady(
-            () => ++readinessChecks >= 3,
-            () => waits++,
-            () => { updates++; return "ok"; });
-
-        Assert(result == "ok", "The update result must be returned.");
-        Assert(readinessChecks == 3 && waits == 2, "The policy must wait only until the broadcast is live.");
-        Assert(updates == 1, "Metadata must be applied exactly once after readiness.");
-    }
-
-    private static void NeverAppliesWhenBroadcastStaysUnavailable()
-    {
-        int readinessChecks = 0;
-        int waits = 0;
-        int updates = 0;
-        bool threw = false;
-        try
-        {
-            AutomaticYouTubePolicy.RunWhenReady<bool>(
-                () => { readinessChecks++; return false; },
-                () => waits++,
-                () => { updates++; return true; });
-        }
-        catch (InvalidOperationException)
-        {
-            threw = true;
-        }
-
-        Assert(threw, "An unavailable broadcast must fail after bounded readiness checks.");
-        Assert(readinessChecks == AutomaticYouTubePolicy.MaxReadinessAttempts, "Readiness attempts must be bounded.");
-        Assert(waits == AutomaticYouTubePolicy.MaxReadinessAttempts - 1, "There must be no wait after the final attempt.");
-        Assert(updates == 0, "Metadata must not be written before the broadcast is live.");
-    }
-
-    private static void DoesNotRetryACompletedUpdate()
-    {
-        int updates = 0;
-        bool result = AutomaticYouTubePolicy.RunWhenReady(
-            () => true,
-            () => throw new Exception("No wait expected."),
-            () => { updates++; return false; });
-
-        Assert(!result, "A partial platform result must be returned to the caller.");
-        Assert(updates == 1, "A completed metadata update must never be retried by the readiness policy.");
-    }
-
-    private static void DoesNotRetryAThrowingUpdate()
-    {
-        int updates = 0;
-        bool threw = false;
-        try
-        {
-            AutomaticYouTubePolicy.RunWhenReady<bool>(
-                () => true,
-                () => throw new Exception("No wait expected."),
-                () => { updates++; throw new InvalidOperationException("Platform update failed."); });
-        }
-        catch (InvalidOperationException ex)
-        {
-            threw = ex.Message == "Platform update failed.";
-        }
-
-        Assert(threw, "A platform update error must propagate unchanged.");
-        Assert(updates == 1, "A throwing metadata update must not be retried.");
     }
 
     private static void ReusesStateWithinFiveSeconds()

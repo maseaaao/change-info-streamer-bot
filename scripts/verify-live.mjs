@@ -62,7 +62,7 @@ try {
   await client.doAction({ id: action.id }, { command: "getState", requestId, payloadJson: "{}" });
   const response = await reply;
 
-  if (response.ok !== true || response.apiVersion !== 3 || !response.data) {
+  if (response.ok !== true || response.apiVersion !== 4 || !response.data) {
     throw new Error(`Unexpected Action response: ${JSON.stringify(response)}`);
   }
 
@@ -74,8 +74,6 @@ try {
     responseOk: response.ok,
     twitchConnected: response.data.twitch?.connected === true,
     twitchLive: response.data.twitch?.live === true,
-    youtubeLive: response.data.youtube?.live === true,
-    youtubeConnected: response.data.youtube?.connected === true,
     templatesPresent: typeof response.data.templates?.twitchTemplate === "string",
   }, null, 2));
 } finally {

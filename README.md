@@ -2,21 +2,20 @@
 
 [Русская версия](README.ru.md)
 
-One self-contained HTML control surface for updating Twitch and YouTube stream metadata from an OBS dock. It connects only to Streamer.bot’s local WebSocket; there is no hosted service, OAuth page, or external UI dependency.
+One self-contained HTML control surface for updating Twitch stream metadata from an OBS dock. It connects only to Streamer.bot’s local WebSocket; there is no hosted service, OAuth page, or external UI dependency.
 
 ![English dashboard showcase](docs/screenshots/dashboard-en.png)
 
-Version 1.3.2 interface; screenshots refreshed on October 17, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
+Version 1.3.2 interface; screenshots refreshed on October 19, 2026. Titles, categories, and tags are edited on the main page. The gear button opens connection settings and title templates.
 
 ## What it does
 
-- Updates titles, categories, and tags on Twitch and on an active YouTube broadcast.
-- Keeps reusable Twitch and YouTube title templates in Streamer.bot global variables.
+- Updates titles, categories, and tags on Twitch.
+- Keeps reusable Twitch title templates in Streamer.bot global variables.
 - Discovers `PRESET | …` Actions in the `STREAM INFO` group for game presets.
-- Opens the correct YouTube Studio destination for both live and non-live states.
 - Ships as a single file that can be opened directly with `file://`.
 - Builds fully localized HTML in Russian, English, Spanish, and Simplified Chinese.
-- Preserves platform selection and drafts across data refreshes and Settings.
+- Preserves Twitch update selection and drafts across data refreshes and Settings.
 - Supports keyboard-driven Twitch category search, retry, and more results.
 
 ## Quick start
@@ -28,21 +27,21 @@ Version 1.3.2 interface; screenshots refreshed on October 17, 2026. Titles, cate
 
 The page automatically connects to `ws://127.0.0.1:8080/`. If your WebSocket requires a password, enter it in the compact connection panel or in Settings. Twitch credentials remain inside the Streamer.bot Action and are never embedded in the HTML file.
 
-The import requires Streamer.bot 1.0.6 or later. Connect the Twitch/YouTube accounts in Streamer.bot and make sure `STREAM INFO | API` is enabled. YouTube updates require an active broadcast; Twitch can also be updated while offline.
+The import requires Streamer.bot 1.0.6 or later. Connect Twitch in Streamer.bot and enable `STREAM INFO | API`. Twitch metadata can also be updated while offline.
 
 ## Using the OBS dock
 
-Open the chosen HTML through an OBS custom browser dock using its local `file:///…` URL. Dock it wherever convenient; platform cards stack vertically at narrow widths.
+Open the chosen HTML through an OBS custom browser dock using its local `file:///…` URL. Dock it wherever convenient; the Twitch card uses the full panel width.
 
-1. Select platforms using the switches beside **Subtitle**. Disabled cards are hidden and retain their drafts.
-2. Enter the shared subtitle and check the resulting titles. Both platforms start in **Use template** mode when the page opens.
-3. Switch a card to **Full title** to enter a separate title. The next subtitle edit returns selected platforms to template mode.
+1. Enable Twitch updates using the switch beside **Subtitle**. Disabled cards are hidden and retain their drafts.
+2. Enter the shared subtitle and check the resulting titles. Twitch starts in **Use template** mode when the page opens.
+3. Switch a card to **Full title** to enter a separate title. The next subtitle edit returns Twitch to template mode.
 4. Select a category from suggestions, add tags with Enter, and remove tags with the cross button. Select a result or clear an unfinished category query.
-5. Select the shared **Apply** button to save the subtitle and send changed fields to available selected platforms. Check error messages for each platform separately.
+5. Select the shared **Apply** button to save the subtitle and send changed fields to connected Twitch. Check the error messages.
 
 The header refresh button rereads state while retaining unsaved edits. Card footer buttons open the stream and platform dashboard; game presets appear below the cards. A preset runs its Action and can change metadata according to that Action's own settings.
 
-Platform selection and connection settings are saved in this browser. The password is stored only when **Remember password** is enabled. Templates and the subtitle are stored in persistent Streamer.bot globals; moving the HTML does not transfer browser settings or drafts.
+Twitch update selection and connection settings are saved in this browser. The password is stored only when **Remember password** is enabled. Templates and the subtitle are stored in persistent Streamer.bot globals; moving the HTML does not transfer browser settings or drafts.
 
 ## Languages and builds
 
@@ -86,25 +85,22 @@ Run `node scripts/verify-category-search-live.mjs` for safe acceptance checks ag
 
 ## Templates and presets
 
-Title templates are configured in **Settings**. The first workspace block is **Subtitle**: it saves the subtitle and applies the resulting titles to connected Twitch and an active YouTube broadcast. Each template may contain at most one `%subtitle%` token.
+The Twitch title template is configured in **Settings** and can contain at most one `%subtitle%` token. **Subtitle** supplies that token's value.
 
-The Twitch and YouTube switches in **Subtitle** select platforms for updates and save the selection in this browser. Edit titles, categories, and tags directly in the platform cards on the main page. **Use template** generates a title from the shared subtitle; **Full title** supports a manually entered title. Changing the subtitle switches selected platforms to template mode. **Apply** saves changes for available selected platforms. Disabled cards are hidden and retain their drafts for re-enabling. Data refreshes and closing Settings preserve unsaved edits. Streamer.bot Action presets and Broadcast Started automation use their own settings.
+The Twitch switch enables updates and remembers the choice in this browser. Edit the title, category, and tags in the Twitch card. **Use template** generates the title from the subtitle; **Full title** accepts manual text. Changing the subtitle restores template mode. **Apply** saves the subtitle and changed fields for connected Twitch. Disabled cards retain their drafts. Refreshing data and closing Settings preserve unsaved edits.
 
 To create a game preset, make an Action in the `STREAM INFO` group named `PRESET | Game name`. Set any of the following persistent global variables, then call `STREAM INFO | API` with `command = applyPreset`:
 
 | Variable | Meaning |
 | --- | --- |
 | `stream_info.template.twitch` | Twitch title template |
-| `stream_info.template.youtube` | YouTube title template |
 | `stream_info.template.subtitle` | Subtitle |
 | `stream_info.preset.twitchCategoryId` | Twitch category ID |
-| `stream_info.preset.youtubeCategoryName` | YouTube category name |
 | `stream_info.preset.twitchTagsJson` | Twitch tag JSON array |
-| `stream_info.preset.youtubeTagsJson` | YouTube tag JSON array |
 
-An empty variable leaves that field unchanged. YouTube is skipped when no broadcast is running, while Twitch can still be updated.
+Empty category and tag variables leave those fields unchanged.
 
-The imported `STREAM INFO | API` Action also subscribes to **YouTube → Broadcast Started**. As soon as a launch is detected, it applies the explicitly saved YouTube title template, subtitle, category, and tags to the new broadcast without changing Twitch. A fresh installation with no saved YouTube values leaves the broadcast unchanged. Re-import [streamerbot-import.txt](streamerbot-import.txt) after upgrading from an earlier version to install the trigger.
+When upgrading to Twitch-only support, re-import `streamerbot-import.txt` to replace the existing `STREAM INFO | API`. Remove its old Broadcast Started trigger if the importer retains it. Action and Execute Code IDs are unchanged, so game presets still call the same API. Legacy variables for the removed platform are no longer read.
 
 ## Development
 

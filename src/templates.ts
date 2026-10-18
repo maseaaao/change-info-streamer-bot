@@ -1,5 +1,4 @@
 export const DEFAULT_TWITCH_TEMPLATE = "🔴 %subtitle%| !tg !yt !tw !donate";
-export const DEFAULT_YOUTUBE_TEMPLATE = "🔴 [PUBG] %subtitle%| !tg !yt !tw !donate";
 
 export function isTemplateValid(template: string): boolean {
   return (template.match(/%subtitle%/g) ?? []).length <= 1;

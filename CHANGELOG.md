@@ -2,6 +2,11 @@
 
 [Русская версия](#история-изменений)
 
+## Unreleased
+
+- Remove YouTube UI, category catalog, templates, API commands and broadcast-start automation; keep Twitch metadata editing and presets.
+- Remove obsolete platform tests and catalog icons, and rebuild all standalone HTML variants.
+
 ## 1.3.2 — 2026-10-14
 
 - Overhaul Twitch category search: merge exact lookup and full-text autocomplete instead of truncating at lookup match.

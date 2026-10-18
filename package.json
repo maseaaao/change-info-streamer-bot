@@ -7,7 +7,7 @@
     "dev": "vite",
     "generate-import": "node scripts/generate-import.mjs && node scripts/verify-import.mjs",
     "check": "tsc --noEmit",
-    "test": "vitest run && dotnet run --project tests/csharp/AutomaticYouTubePolicyTests.csproj --configuration Release",
+    "test": "vitest run && dotnet run --project tests/csharp/StreamerbotTests.csproj --configuration Release",
     "build": "npm run generate-import && npm run check && node scripts/build-locales.mjs && node scripts/verify-locales.mjs",
     "preview": "vite preview"
   },

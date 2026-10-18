@@ -12,10 +12,9 @@ const presetAction: ActionShape = { id: "preset-pubg", name: "PRESET | PUBG", gr
 
 function defaultState() {
   return {
-    apiVersion: 3,
+    apiVersion: 4,
     twitch: { connected: true, live: true, accountName: "Twitch account", login: "tester", title: "Twitch title", categoryId: "493057", categoryName: "PUBG: BATTLEGROUNDS", categoryImageUrl: "", tags: ["PUBG"] },
-    youtube: { connected: true, live: true, accountName: "YouTube account", channelId: "UC-test-channel", broadcastId: "video-1", status: "live", title: "YouTube title", categoryId: "20", categoryName: "Видеоигры", tags: ["PUBG"] },
-    templates: { twitchTemplate: "🔴 %subtitle%| !tg", youtubeTemplate: "🔴 [PUBG] %subtitle%| !yt", subtitle: "Старт", configured: true },
+    templates: { twitchTemplate: "🔴 %subtitle%| !tg",  subtitle: "Старт", configured: true },
   };
 }
 
@@ -101,12 +100,12 @@ export class StreamerbotClient {
     let data: Record<string, unknown> = {};
     if (command === "getState") data = mockStreamerbot.state;
     if (command === "searchTwitchCategories") data = { results: [{ id: "493057", name: "PUBG: BATTLEGROUNDS", imageUrl: "" }] };
-    if (command === "updateTwitch" || command === "updateYouTube") data = { fields: { title: true, category: true, tags: true } };
+    if (command === "updateTwitch") data = { fields: { title: true, category: true, tags: true } };
     if (command === "saveTemplates") {
-      mockStreamerbot.state.templates = { twitchTemplate: String(payload.twitchTemplate ?? ""), youtubeTemplate: String(payload.youtubeTemplate ?? ""), subtitle: String(payload.subtitle ?? ""), configured: true };
+      mockStreamerbot.state.templates = { twitchTemplate: String(payload.twitchTemplate ?? ""),  subtitle: String(payload.subtitle ?? ""), configured: true };
       data = { templates: mockStreamerbot.state.templates };
     }
-    const response = { apiVersion: 3, requestId: String(args.requestId ?? ""), command, ok: true, data, error: null };
+    const response = { apiVersion: 4, requestId: String(args.requestId ?? ""), command, ok: true, data, error: null };
     if (command === "searchTwitchCategories" && mockStreamerbot.deferSearch) {
       mockStreamerbot.pendingSearches.push({ payload, reply: envelope => this.handlers.get("Custom.CodeEvent")?.({ data: { eventName: "stream_info_api_response", args: { ...response, ...envelope } } }) });
       return;

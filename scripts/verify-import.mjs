@@ -36,13 +36,11 @@ if (payload.data?.actions?.length !== 1 || payload.data.actions[0]?.name !== "ST
 }
 
 const action = payload.data.actions[0];
-if (action.triggers?.length !== 1 || action.triggers[0]?.type !== 4001 || action.triggers[0]?.enabled !== true) {
-  throw new Error("STREAM INFO | API must contain the enabled YouTube Broadcast Started trigger.");
+if (action.triggers?.length !== 0) {
+  throw new Error("STREAM INFO | API must not contain broadcast triggers.");
 }
-
 const source = Buffer.from(action.actions?.[0]?.byteCode ?? "", "base64").toString("utf8");
-if (!source.includes("applyYouTubePresetOnStart") || !source.includes("ApplyYouTubePresetOnStart") || !source.includes("AutomaticYouTubePolicy")) {
-  throw new Error("STREAM INFO | API source is missing automatic YouTube metadata application.");
+if (!source.includes("UpdateTwitch") || /youtube/i.test(source)) {
+  throw new Error("STREAM INFO | API must contain only Twitch support.");
 }
-
 console.log(`Verified Streamer.bot import: minimum ${requiredVersion}, exported from ${payload.exportedFrom}.`);

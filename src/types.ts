@@ -4,12 +4,6 @@ export interface TwitchCategory {
   imageUrl: string;
 }
 
-export interface YouTubeCategory {
-  id: string;
-  name: string;
-  iconSvg: string;
-}
-
 export interface TwitchState {
   connected: boolean;
   live: boolean;
@@ -23,29 +17,14 @@ export interface TwitchState {
   tags?: string[];
 }
 
-export interface YouTubeState {
-  connected: boolean;
-  live: boolean;
-  accountName?: string;
-  channelId?: string;
-  broadcastId?: string;
-  status?: string;
-  title?: string;
-  categoryId?: string;
-  categoryName?: string;
-  tags?: string[];
-}
-
 export interface StreamState {
   apiVersion: number;
   twitch: TwitchState;
-  youtube: YouTubeState;
   templates: TemplateState;
 }
 
 export interface TemplateState {
   twitchTemplate: string;
-  youtubeTemplate: string;
   subtitle: string;
   configured: boolean;
 }
@@ -66,10 +45,8 @@ export interface ConnectionSettings {
   password: string;
   rememberPassword: boolean;
   twitchTemplate: string;
-  youtubeTemplate: string;
   lastSubtitle: string;
   twitchEnabled: boolean;
-  youtubeEnabled: boolean;
 }
 
 export interface ActionSummary {
@@ -79,20 +56,14 @@ export interface ActionSummary {
   enabled: boolean;
 }
 
-export type Platform = "twitch" | "youtube";
+export type Platform = "twitch";
 
 export interface AllForm {
   twitchTitle: string;
-  youtubeTitle: string;
   twitchTitleMode: "subtitle" | "full";
-  youtubeTitleMode: "subtitle" | "full";
   subtitle: string;
   twitchCategory: TwitchCategory | null;
-  youtubeCategory: YouTubeCategory | null;
   twitchTags: string[];
-  youtubeTags: string[];
   twitchTagDraft: string;
-  youtubeTagDraft: string;
   twitchCategoryQuery: string;
-  youtubeCategoryQuery: string;
 }
